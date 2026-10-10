@@ -115,7 +115,7 @@ async function carregarAtivosPortfolio() {
                         <strong>${item.ticker} (${item.tipo})</strong>
                         <small>Qtd: ${item.quantidade} • Preço Médio: R$ ${(item.preco_medio || 0).toFixed(2)} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
-                    <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;">🗑️</button>
+                    <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir ativo">🗑️</button>
                 `;
                 container.appendChild(div);
             }
@@ -129,7 +129,6 @@ async function carregarAtivosPortfolio() {
         const patrimonioGeral = totalReserva + totalCripto + totalAcoes + totalFiis;
         atualizarPatrimonioTotalAuto(patrimonioGeral);
 
-        // Atualiza a barra de progresso da Reserva
         const metaTextoAtual = document.getElementById('metaTextDisplay');
         if (metaTextoAtual) {
             let metaDesejada = 10000;
@@ -196,7 +195,7 @@ async function removerAtivo(id) {
 }
 
 // ==========================================================
-// 2. ENTRADAS & SALÁRIOS (Com exclusão 🗑️)
+// 2. ENTRADAS & SALÁRIOS
 // ==========================================================
 async function carregarEntradasBD() {
     try {
@@ -315,7 +314,10 @@ async function carregarDadosDoBD() {
                     <strong>${item.descricao}</strong>
                     <small>${item.data} • [${item.categoria}]</small>
                 </div>
-                <span class="trans-amount expense privacy-target">- R$ ${v.toFixed(2).replace('.', ',')}</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="trans-amount expense privacy-target">- R$ ${v.toFixed(2).replace('.', ',')}</span>
+                    <button onclick="removerTransacaoExtrato(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir do extrato">🗑️</button>
+                </div>
             `;
             listContainer.appendChild(div);
         });
@@ -362,6 +364,22 @@ async function adicionarGastoSimulado(e) {
         }
     } catch (err) {
         alert("Servidor backend indisponível.");
+    }
+}
+
+async function removerTransacaoExtrato(id) {
+    try {
+        const res = await fetch(`${API_URL}/transacao/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            carregarDadosDoBD();
+        } else {
+            alert("Erro ao remover transação.");
+        }
+    } catch (e) {
+        console.log("Erro ao conectar com o servidor.");
     }
 }
 
@@ -549,7 +567,6 @@ async function adicionarAporteMes() {
         chartPerformance.update();
     }
 
-    // Soma o aporte diretamente no patrimônio total exibido e na Meta de Reserva
     const totalDisplay = document.getElementById('totalPortfolioDisplay');
     if (totalDisplay) {
         let atual = parseFloat(totalDisplay.innerText.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0;
@@ -577,14 +594,156 @@ async function adicionarAporteMes() {
     alternarFormulario('formAporte');
 }
 
+// ==========================================================
+// 6. GERAÇÃO COMPLETA DE EXTRATO FINANCEIRO EM PDF
+// ==========================================================
 async function gerarRelatorioPDF(e) {
     if (e) e.preventDefault();
-    if (!window.jspdf) return alert("Biblioteca jsPDF não carregada.");
+    if (!window.jspdf) return alert("Biblioteca jsPDF não foi carregada no navegador.");
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("FinancIA Autônoma - Extrato Mensal", 14, 20);
-    doc.save(`FinancIA_Extrato_${Date.now()}.pdf`);
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const nomeUsuario = localStorage.getItem('financia_user') || 'Usuário';
+        let y = 20;
+
+        // Cabeçalho do PDF
+        doc.setFillColor(11, 45, 33);
+        doc.rect(0, 0, 210, 30, 'F');
+        doc.setTextColor(0, 255, 136);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(18);
+        doc.text("FINANCIA AUTÔNOMA", 14, 18);
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Relatório Consolidado • Usuário: ${nomeUsuario} • Data: ${new Date().toLocaleDateString('pt-BR')}`, 14, 25);
+
+        y = 40;
+
+        // 1. Resumo do Patrimônio & Reserva
+        const totalPatrimonio = document.getElementById('totalPortfolioDisplay')?.innerText || 'R$ 0,00';
+        const metaReserva = document.getElementById('metaTextDisplay')?.innerText || 'R$ 0,00';
+
+        doc.setTextColor(5, 28, 20);
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("1. RESUMO GERAL", 14, y);
+        y += 6;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Patrimônio Total Calculado: ${totalPatrimonio}`, 14, y);
+        y += 5;
+        doc.text(`Progresso Meta de Reserva: ${metaReserva}`, 14, y);
+        y += 10;
+
+        // Função auxiliar para criar rotas com dados
+        const buscarDados = async (endpoint) => {
+            try {
+                const res = await fetch(`${API_URL}/${endpoint}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                return res.ok ? await res.json() : [];
+            } catch { return []; }
+        };
+
+        const [entradas, transacoes, fixos, ativos] = await Promise.all([
+            buscarDados('entradas'),
+            buscarDados('extrato'),
+            buscarDados('gastos-fixos'),
+            buscarDados('ativos')
+        ]);
+
+        // 2. Entradas & Receitas
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("2. ENTRADAS & SALÁRIOS", 14, y);
+        y += 6;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+
+        if (entradas.length === 0) {
+            doc.text("Nenhuma entrada cadastrada.", 14, y);
+            y += 8;
+        } else {
+            entradas.forEach(item => {
+                doc.text(`• ${item.data} - ${item.descricao}: + R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
+                y += 5;
+            });
+            y += 3;
+        }
+
+        // 3. Gastos Variáveis (Open Finance)
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("3. GASTOS VARIÁVEIS (Simulador / Categorização IA)", 14, y);
+        y += 6;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+
+        if (transacoes.length === 0) {
+            doc.text("Nenhum gasto variável cadastrado.", 14, y);
+            y += 8;
+        } else {
+            transacoes.forEach(item => {
+                doc.text(`• ${item.data} - ${item.descricao} [${item.categoria}]: - R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
+                y += 5;
+                if (y > 270) { doc.addPage(); y = 20; }
+            });
+            y += 3;
+        }
+
+        // 4. Gastos Fixos
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("4. COMPROMISSOS FIXOS MENSAIS", 14, y);
+        y += 6;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+
+        if (fixos.length === 0) {
+            doc.text("Nenhum gasto fixo cadastrado.", 14, y);
+            y += 8;
+        } else {
+            fixos.forEach(item => {
+                doc.text(`• ${item.descricao} (Vencimento: ${item.vencimento}): R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
+                y += 5;
+                if (y > 270) { doc.addPage(); y = 20; }
+            });
+            y += 3;
+        }
+
+        // 5. Portfólio de Ativos
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("5. PORTFÓLIO DE ATIVOS & INVESTIMENTOS", 14, y);
+        y += 6;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+
+        if (ativos.length === 0) {
+            doc.text("Nenhum ativo cadastrado no portfólio.", 14, y);
+            y += 8;
+        } else {
+            ativos.forEach(item => {
+                const totalAtivo = item.quantidade * (item.preco_medio || 0);
+                doc.text(`• ${item.ticker} (${item.tipo}) - Qtd: ${item.quantidade} | Preço Médio: R$ ${(item.preco_medio || 0).toFixed(2)} | Total: R$ ${totalAtivo.toFixed(2)}`, 14, y);
+                y += 5;
+                if (y > 270) { doc.addPage(); y = 20; }
+            });
+        }
+
+        // Rodapé do PDF
+        const paginas = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= paginas; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text(`FinancIA Autônoma - Documento gerado automaticamente • Página ${i} de ${paginas}`, 14, 288);
+        }
+
+        doc.save(`FinancIA_Extrato_Consolidado_${Date.now()}.pdf`);
+    } catch (err) {
+        console.error("Erro ao gerar PDF:", err);
+        alert("Erro ao compilar informações para o PDF.");
+    }
 }

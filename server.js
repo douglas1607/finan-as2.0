@@ -166,24 +166,33 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     if (!descricao || isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
 
     let categoriaIA = "Lazer";
-    try {
-        const prompt = `Classifique a compra estritamente em APENAS UMA destas três palavras exatas: "Mercado", "Casa" ou "Lazer". 
-Regras:
-- "Mercado": use para compras de supermercado, feira, açougue, hortifrúti, compras semanais de alimentos ou itens de dispensa.
-- "Casa": use para materiais de construção, reformas, ferramentas, cimento, telhas, móveis ou manutenção residencial.
-- "Lazer": use apenas para entretenimento, passeios, streaming, jogos ou restaurantes/lanchonetes que não sejam compras de mercado.
+    const descLower = descricao.toLowerCase();
+
+    // Regra direta prioritária
+    if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('compra semanal') || descLower.includes('feira') || descLower.includes('açougue')) {
+        categoriaIA = 'Mercado';
+    } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta') || descLower.includes('construção') || descLower.includes('ferramenta')) {
+        categoriaIA = 'Casa';
+    } else {
+        try {
+            const prompt = `Responda com APENAS UMA PALAVRA EXATA entre "Mercado", "Casa" ou "Lazer".
+- Se for supermercado, feira, alimentos, compras de casa de alimento, responda: Mercado
+- Se for material de construção, reforma, obra, reparo de casa, responda: Casa
+- Se for passeio, cinema, restaurante, bar, jogo, streaming, responda: Lazer
+
 Compra: "${descricao}"`;
-        
-        const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
-        
-        if (response && response.text) {
-            const resp = response.text.trim().toLowerCase();
-            if (resp.includes('mercado')) categoriaIA = 'Mercado';
-            else if (resp.includes('casa')) categoriaIA = 'Casa';
-            else if (resp.includes('lazer')) categoriaIA = 'Lazer';
+            
+            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            
+            if (response && response.text) {
+                const resp = response.text.trim().toLowerCase();
+                if (resp.includes('mercado')) categoriaIA = 'Mercado';
+                else if (resp.includes('casa')) categoriaIA = 'Casa';
+                else if (resp.includes('lazer')) categoriaIA = 'Lazer';
+            }
+        } catch (e) {
+            console.error("Modo offline / erro no Gemini IA");
         }
-    } catch (e) {
-        console.error("Modo offline / erro no Gemini IA");
     }
 
     const dataHoje = new Date().toLocaleDateString('pt-BR');
@@ -191,6 +200,13 @@ Compra: "${descricao}"`;
         [req.usuario.id, descricao, valorNum, categoriaIA, dataHoje], function(err) {
             if (err) return res.status(500).json({ erro: "Erro ao salvar transação." });
             res.status(201).json({ id: this.lastID, descricao, valor: valorNum, categoria: categoriaIA, data: dataHoje });
+    });
+});
+
+app.delete('/api/transacao/:id', autenticarToken, (req, res) => {
+    db.run(`DELETE FROM transacoes WHERE id = ? AND usuario_id = ?`, [req.params.id, req.usuario.id], function(err) {
+        if (err) return res.status(500).json({ erro: "Erro ao excluir transação." });
+        res.json({ mensagem: "Transação removida com sucesso." });
     });
 });
 
