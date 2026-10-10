@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinancIA Autônoma - Login</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="login-page">
+    <div class="login-card">
+        <div class="logo-login">
+            <span class="logo-icon">⚡</span>
+            <h1>FinancIA Autônoma</h1>
+        </div>
+
+        <div class="tabs-login">
+            <button id="tabLogin" class="tab-btn active" onclick="mostrarAba('login')">Entrar</button>
+            <button id="tabCadastro" class="tab-btn" onclick="mostrarAba('cadastro')">Cadastrar</button>
+        </div>
+
+        <!-- Form Login -->
+        <form id="formLoginBox" onsubmit="efetuarLogin(event)">
+            <div class="input-group">
+                <label>E-mail</label>
+                <input type="email" id="loginEmail" placeholder="seuemail@exemplo.com" required>
+            </div>
+            <div class="input-group">
+                <label>Senha</label>
+                <input type="password" id="loginSenha" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="btn-primary-block">Entrar no Painel</button>
+        </form>
+
+        <!-- Form Cadastro -->
+        <form id="formCadastroBox" style="display: none;" onsubmit="efetuarCadastro(event)">
+            <div class="input-group">
+                <label>Nome Completo</label>
+                <input type="text" id="cadNome" placeholder="Seu nome" required>
+            </div>
+            <div class="input-group">
+                <label>E-mail</label>
+                <input type="email" id="cadEmail" placeholder="seuemail@exemplo.com" required>
+            </div>
+            <div class="input-group">
+                <label>Senha</label>
+                <input type="password" id="cadSenha" placeholder="Crie uma senha forte" required>
+            </div>
+            <button type="submit" class="btn-primary-block">Criar Minha Conta</button>
+        </form>
+    </div>
+
+    <script>
+        // Usa o IP direto para bater exatamente onde o servidor escuta
+      const API_URL = 'http://localhost:3000/api';
+
+        function mostrarAba(aba) {
+            document.getElementById('tabLogin').classList.toggle('active', aba === 'login');
+            document.getElementById('tabCadastro').classList.toggle('active', aba === 'cadastro');
+            document.getElementById('formLoginBox').style.display = aba === 'login' ? 'flex' : 'none';
+            document.getElementById('formCadastroBox').style.display = aba === 'cadastro' ? 'flex' : 'none';
+        }
+
+        async function efetuarLogin(e) {
+            if (e) e.preventDefault(); // Impede o recarregamento da página
+
+            const email = document.getElementById('loginEmail').value.trim();
+            const senha = document.getElementById('loginSenha').value;
+
+            try {
+                const res = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, senha })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    localStorage.setItem('financia_token', data.token);
+                    localStorage.setItem('financia_user', data.nome);
+                    window.location.href = 'index.html';
+                } else {
+                    alert(data.erro || 'Falha no login');
+                }
+            } catch (err) {
+                console.error("Erro no Login:", err);
+                alert('Servidor desconectado! Verifique o terminal.');
+            }
+        }
+
+        async function efetuarCadastro(e) {
+            if (e) e.preventDefault(); // Impede o recarregamento da página
+
+            const nome = document.getElementById('cadNome').value.trim();
+            const email = document.getElementById('cadEmail').value.trim();
+            const senha = document.getElementById('cadSenha').value;
+
+            try {
+                const res = await fetch(`${API_URL}/cadastrar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nome, email, senha })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert('Conta criada com sucesso! Faça login.');
+                    mostrarAba('login');
+                } else {
+                    alert(data.erro || 'Erro ao cadastrar');
+                }
+            } catch (err) {
+                console.error("Erro no Cadastro:", err);
+                alert('Servidor desconectado! Verifique o terminal.');
+            }
+        }
+    </script>
+</body>
+
+</html>

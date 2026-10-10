@@ -1,0 +1,665 @@
+/* ========================================================== */
+/* 1. VARIÁVEIS E RESET GLOBAL                                */
+/* ========================================================== */
+:root {
+    --verde-fundo-profundo: #051c14;
+    --verde-card: #0b2d21;
+    --verde-card-escuro: #061c14;
+    --verde-destaque: #00ff88;
+    --verde-suave: #a7ffd5;
+    --verde-hover: #00cc6a;
+    --branco: #ffffff;
+    --texto-secundario: #b3c7bc;
+    --borda-vidro: rgba(255, 255, 255, 0.1);
+    --borda-verde-suave: rgba(0, 255, 136, 0.15);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    text-decoration: none;
+}
+
+html {
+    height: 100%;
+}
+
+body {
+    background: linear-gradient(180deg, var(--verde-fundo-profundo) 0%, #03120d 100%);
+    color: var(--branco);
+    font-family: 'Montserrat', 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+main {
+    flex: 1 0 auto;
+    width: 100%;
+}
+
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* ========================================================== */
+/* 2. HEADER E NAVEGAÇÃO DO DASHBOARD / SITE                 */
+/* ========================================================== */
+.cabecalho-principal,
+.dashboard-header {
+    background-color: #03120d;
+    border: 1px solid var(--borda-verde-suave);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    padding: 12px 25px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-left,
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.logo-icon {
+    color: var(--verde-destaque);
+    font-size: 1.2rem;
+}
+
+.logo h1, .texto-logo {
+    font-size: 1.1rem;
+    margin: 0;
+    color: var(--branco);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.foto-perfil-nav {
+    width: 65px;
+    height: 65px;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 0.5px solid var(--verde-destaque);
+}
+
+.header-nav {
+    display: flex;
+    gap: 15px;
+    margin-left: 15px;
+    border-left: 1px solid var(--borda-verde-suave);
+    padding-left: 15px;
+    align-items: center;
+}
+
+.nav-link {
+    color: var(--texto-secundario);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    color: var(--verde-destaque);
+    background: rgba(0, 255, 136, 0.08);
+}
+
+/* Estilização refinada para o botão Sair e Relatório no Header */
+.nav-link[onclick*="fazerLogout"] {
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    color: #ff6b6b;
+}
+
+.nav-link[onclick*="fazerLogout"]:hover {
+    background: rgba(255, 107, 107, 0.15);
+    color: #ff8787;
+}
+
+.btn-privacy {
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid var(--borda-verde-suave);
+    color: var(--verde-suave);
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-privacy:hover {
+    background: var(--verde-destaque);
+    color: var(--verde-fundo-profundo);
+}
+
+.header-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--verde-destaque);
+    background: rgba(0, 255, 136, 0.08);
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--borda-verde-suave);
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background-color: var(--verde-destaque);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--verde-destaque);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.2); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.avatar {
+    width: 36px;
+    height: 36px;
+    background: var(--verde-destaque);
+    color: var(--verde-fundo-profundo);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border: 1px solid var(--verde-suave);
+}
+
+/* ========================================================== */
+/* 3. GRID LAYOUT E CARDS DO DASHBOARD                        */
+/* ========================================================== */
+.dashboard-content {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 20px;
+}
+
+.card {
+    background: linear-gradient(135deg, var(--verde-card) 0%, var(--verde-card-escuro) 100%);
+    border: 1px solid var(--borda-verde-suave);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+    transition: border-color 0.3s ease;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.card:hover {
+    border-color: rgba(0, 255, 136, 0.3);
+}
+
+.card h2 {
+    margin-top: 0;
+    color: var(--verde-destaque);
+    text-transform: uppercase;
+    font-size: 0.95rem;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--borda-verde-suave);
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    font-weight: 700;
+}
+
+/* Distribuição das Colunas */
+.main-portfolio { grid-column: span 8; }
+.asset-allocation { grid-column: span 4; }
+.trading-feed-card { grid-column: span 5; }
+.ai-forecasts { grid-column: span 7; }
+.revenue-progress { grid-column: span 4; }
+.performance-overview { grid-column: span 8; }
+.expense-tracker { grid-column: span 12; }
+.fixed-expenses { grid-column: span 12; }
+
+.chart-container {
+    height: 180px;
+    position: relative;
+}
+
+.portfolio-value {
+    font-size: 2rem;
+    color: var(--verde-destaque);
+    margin: 10px 0;
+    font-weight: 700;
+}
+
+/* ========================================================== */
+/* 4. COMPONENTES E ELEMENTOS INTERNOS                        */
+/* ========================================================== */
+.card-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.card-header-flex h2 {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.btn-edit {
+    background: transparent;
+    border: 1px solid var(--borda-verde-suave);
+    color: var(--verde-suave);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-edit:hover {
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--verde-destaque);
+    border-color: var(--verde-destaque);
+}
+
+/* ========================================================== */
+/* ESTILIZAÇÃO COMPLETA DAS CAIXINHAS DE EDIÇÃO/FORMULÁRIOS   */
+/* ========================================================== */
+.simulator-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid var(--borda-verde-suave);
+    box-sizing: border-box;
+    align-items: center;
+}
+
+.simulator-box-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 15px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid var(--borda-verde-suave);
+    box-sizing: border-box;
+}
+
+.simulator-box input,
+.simulator-box select,
+.simulator-box-col input,
+.simulator-box-col select {
+    background: var(--verde-fundo-profundo);
+    border: 1px solid var(--borda-verde-suave);
+    color: var(--branco);
+    padding: 10px 14px;
+    border-radius: 8px;
+    outline: none;
+    font-family: inherit;
+    font-size: 0.85rem;
+    width: 100%;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.simulator-box input:focus,
+.simulator-box select:focus,
+.simulator-box-col input:focus,
+.simulator-box-col select:focus {
+    border-color: var(--verde-destaque);
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+}
+
+.simulator-box button,
+.simulator-box-col button {
+    background: var(--verde-destaque);
+    color: var(--verde-fundo-profundo);
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.85rem;
+    transition: background-color 0.3s, transform 0.2s;
+    width: 100%;
+}
+
+.simulator-box button:hover,
+.simulator-box-col button:hover {
+    background-color: var(--verde-hover);
+    transform: translateY(-1px);
+}
+
+.trading-feed {
+    width: 100%;
+    color: var(--branco);
+    border-collapse: collapse;
+}
+
+.trading-feed th,
+.trading-feed td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--borda-vidro);
+    font-size: 0.85rem;
+}
+
+.trading-feed th {
+    color: var(--verde-suave);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.forecast-grid {
+    display: flex;
+    gap: 15px;
+    align-items: stretch;
+}
+
+.forecast-item {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: 1px solid var(--borda-vidro);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    box-sizing: border-box;
+}
+
+.forecast-label {
+    font-size: 0.8rem;
+    color: var(--texto-secundario);
+}
+
+.meta-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    margin: 15px 0 8px 0;
+    color: var(--verde-suave);
+}
+
+.progress-track {
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    height: 10px;
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--borda-vidro);
+}
+
+.progress-bar {
+    background-color: var(--verde-destaque);
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.5s ease;
+}
+
+.expense-categories {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.cat-card {
+    background-color: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--borda-vidro);
+    padding: 12px;
+    border-radius: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.cat-card span { font-size: 0.8rem; color: var(--texto-secundario); }
+.cat-card strong { font-size: 1.1rem; color: var(--verde-destaque); }
+
+.transaction-list,
+.fixed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.transaction-item,
+.fixed-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 10px 14px;
+    border-radius: 8px;
+    border-left: 4px solid var(--verde-destaque);
+    border-top: 1px solid var(--borda-vidro);
+    border-right: 1px solid var(--borda-vidro);
+    border-bottom: 1px solid var(--borda-vidro);
+}
+
+.trans-amount.expense { color: #ff6b6b; font-weight: 700; }
+.fixed-amount { color: var(--verde-suave); font-weight: 700; }
+
+.fixed-total-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 14px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--borda-verde-suave);
+    font-weight: 700;
+    margin-top: 15px;
+}
+
+/* ========================================================== */
+/* 5. TELA DE LOGIN E CADASTRO (ORGANIZADA)                   */
+/* ========================================================== */
+.login-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.login-card {
+    background: var(--verde-card);
+    border: 1px solid var(--borda-verde-suave);
+    padding: 35px 30px;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.logo-login {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 25px;
+    gap: 8px;
+}
+
+.logo-login .logo-icon {
+    font-size: 2rem;
+}
+
+.logo-login h1 {
+    font-size: 1.25rem;
+    color: var(--branco);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.tabs-login {
+    display: flex;
+    margin-bottom: 25px;
+    border-bottom: 1px solid var(--borda-vidro);
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 12px;
+    background: none;
+    border: none;
+    color: var(--texto-secundario);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active {
+    color: var(--verde-destaque);
+    border-bottom: 2px solid var(--verde-destaque);
+}
+
+#formLoginBox,
+#formCadastroBox {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.input-group label {
+    font-size: 0.8rem;
+    color: var(--texto-secundario);
+    font-weight: 600;
+}
+
+.input-group input {
+    width: 100%;
+    background: var(--verde-fundo-profundo);
+    border: 1px solid var(--borda-verde-suave);
+    padding: 12px 14px;
+    border-radius: 8px;
+    color: var(--branco);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-group input:focus {
+    border-color: var(--verde-destaque);
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+}
+
+.btn-primary-block {
+    width: 100%;
+    padding: 14px;
+    background: var(--verde-destaque);
+    color: var(--verde-fundo-profundo);
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.btn-primary-block:hover {
+    background-color: var(--verde-hover);
+    transform: translateY(-1px);
+}
+
+.btn-primary-block:active {
+    transform: translateY(0);
+}
+
+/* ========================================================== */
+/* 6. RESPONSIVIDADE ADAPTATIVA (CELULAR E TABLETS)           */
+/* ========================================================== */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .dashboard-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .header-left {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .header-nav {
+        margin-left: 0;
+        border-left: none;
+        padding-left: 0;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .dashboard-content {
+        grid-template-columns: 1fr;
+    }
+
+    .main-portfolio,
+    .asset-allocation,
+    .trading-feed-card,
+    .ai-forecasts,
+    .revenue-progress,
+    .performance-overview,
+    .expense-tracker,
+    .fixed-expenses {
+        grid-column: span 1 !important;
+    }
+
+    .simulator-box,
+    .simulator-box-col,
+    .expense-categories,
+    .forecast-grid {
+        flex-direction: column;
+    }
+
+    .login-card {
+        padding: 25px 20px;
+    }
+}

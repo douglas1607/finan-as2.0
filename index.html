@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinancIA Autônoma - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- jsPDF para exportar o extrato em PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">⚡</span>
+                    <h1>FinancIA Autônoma</h1>
+                </div>
+                <nav class="header-nav">
+                    <a href="#" class="nav-link active">Painel</a>
+                    <a href="#" class="nav-link" onclick="gerarRelatorioPDF(event)">📄Extrato</a>
+                    <a href="#" class="nav-link" onclick="fazerLogout(event)">Sair</a>
+                </nav>
+            </div>
+
+            <div class="header-right">
+                <button class="btn-privacy" onclick="alternarModoPrivacidade()" title="Ocultar/Exibir Valores">👁️ Privado</button>
+                <div class="header-status">
+                    <span class="pulse-dot"></span>
+                    <span>IA CONECTADA</span>
+                </div>
+                <div class="user-profile">
+                    <div class="avatar" id="avatarLetra">U</div>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-content">
+            <!-- Patrimônio Total -->
+            <section class="card main-portfolio">
+                <div class="card-header-flex">
+                    <h2>Evolução do Patrimônio Total</h2>
+                    <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir Saldo</button>
+                </div>
+                
+                <div id="formPatrimonio" class="simulator-box" style="display: none;">
+                    <input type="number" id="inputNovoPatrimonio" placeholder="Valor do Patrimônio (R$)">
+                    <button type="button" onclick="salvarPatrimonioInicial()">Salvar Saldo</button>
+                </div>
+
+                <div class="portfolio-value privacy-target" id="totalPortfolioDisplay">R$ 0,00</div>
+                <div class="chart-container">
+                    <canvas id="portfolioChart"></canvas>
+                </div>
+            </section>
+
+           <!-- Alocação de Ativos Dinâmica -->
+            <section class="card asset-allocation">
+                <div class="card-header-flex">
+                    <h2>Alocação de Ativos</h2>
+                    <button class="btn-edit" onclick="alternarFormulario('formAlocacao')">+ Adicionar Ativo</button>
+                </div>
+
+                <div id="formAlocacao" class="simulator-box-col" style="display: none;">
+                    <select id="inputTipoAtivo">
+                        <option value="Reserva">Reserva / Renda Fixa (R$)</option>
+                        <option value="Cripto">Criptomoeda (Ex: bitcoin)</option>
+                        <option value="Acoes">Ação / FII (Ex: MXRF11 ou PETR4)</option>
+                    </select>
+                    <input type="text" id="inputTickerAtivo" placeholder="Nome ou Ticker (ex: BTC, MXRF11)">
+                    <input type="number" step="any" id="inputQtdAtivo" placeholder="Quantidade de cotas/unidades ou valor em R$">
+                    <button type="button" onclick="adicionarAtivoPortfolio()">Salvar Ativo no Portfólio</button>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="assetChart"></canvas>
+                </div>
+                <div class="transaction-list" id="listaAtivosCadastrados" style="margin-top: 15px;"></div>
+            </section>
+
+            <!-- Ativos em Destaque -->
+            <section class="card trading-feed-card">
+                <div class="card-header-flex">
+                    <h2>Ativos em Destaque</h2>
+                    <span class="status-badge">🔴 Ao Vivo</span>
+                </div>
+                <table class="trading-feed">
+                    <thead>
+                        <tr>
+                            <th>Ativo</th>
+                            <th>Valor</th>
+                            <th>Variação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Cripto (BTC)</td>
+                            <td id="btcPreco" class="privacy-target">Carregando...</td>
+                            <td><span class="neon-green" id="btcVar">--</span></td>
+                        </tr>
+                        <tr>
+                            <td>Fundo Imob. (FIIs)</td>
+                            <td id="fiiPreco" class="privacy-target">R$ 102,50</td>
+                            <td><span class="neon-green">+0,8%</span></td>
+                        </tr>
+                        <tr>
+                            <td>Ações Tech</td>
+                            <td id="acoesPreco" class="privacy-target">R$ 45,80</td>
+                            <td><span class="neon-pink">-1,2%</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Previsões IA -->
+            <section class="card ai-forecasts">
+                <h2>Previsões da IA</h2>
+                <div class="forecast-grid">
+                    <div class="forecast-item">
+                        <span class="forecast-label">Rendimento Estimado</span>
+                        <strong class="neon-green">+12,5% a.a.</strong>
+                    </div>
+                    <div class="forecast-item">
+                        <span class="forecast-label">Perfil de Risco</span>
+                        <strong class="neon-blue">Moderado</strong>
+                    </div>
+                    <div class="forecast-item ai-tip">
+                        <span class="forecast-label">Recomendação da IA</span>
+                        <p id="aiRecommendationText">Analisando histórico de contas salvas...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Meta de Reserva -->
+            <section class="card revenue-progress">
+                <div class="card-header-flex">
+                    <h2>Meta de Reserva</h2>
+                    <button class="btn-edit" onclick="alternarFormulario('formMeta')">⚙️ Configurar</button>
+                </div>
+
+                <div id="formMeta" class="simulator-box-col" style="display: none;">
+                    <input type="number" id="inputMetaTotal" placeholder="Meta Desejada (R$)">
+                    <input type="number" id="inputMetaAtual" placeholder="Valor Atual Salvo (R$)">
+                    <button type="button" onclick="salvarMetaReserva()">Atualizar Meta</button>
+                </div>
+
+                <div class="meta-info">
+                    <span>Progresso Atual</span>
+                    <strong id="metaTextDisplay" class="privacy-target">R$ 0 / R$ 0 (0%)</strong>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-bar" id="metaProgressBar" style="width: 0%;"></div>
+                </div>
+            </section>
+
+            <!-- Aportes Mensais -->
+            <section class="card performance-overview">
+                <div class="card-header-flex">
+                    <h2>Aportes por Mês (R$)</h2>
+                    <button class="btn-edit" onclick="alternarFormulario('formAporte')">+ Registrar Aporte</button>
+                </div>
+
+                <div id="formAporte" class="simulator-box" style="display: none;">
+                    <input type="text" id="inputAporteMes" placeholder="Mês (Ex: Jan)">
+                    <input type="number" id="inputAporteVal" placeholder="Valor (R$)">
+                    <button type="button" onclick="adicionarAporteMes()">Registrar</button>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Simulador / Extrato Open Finance com IA -->
+            <section class="card expense-tracker">
+                <div class="card-header-flex">
+                    <h2>Simulador Open Finance (Categorização Gemini IA)</h2>
+                    <span class="bank-status">🟢 Banco Sincronizado</span>
+                </div>
+
+                <div class="simulator-box">
+                    <input type="text" id="simDesc" placeholder="Ex: Mercado compra semanal">
+                    <input type="number" id="simVal" placeholder="Valor (R$)">
+                    <button type="button" onclick="adicionarGastoSimulado(event)">Categorizar com IA</button>
+                </div>
+
+                <div class="expense-categories">
+                    <div class="cat-card">
+                        <span>🛒 Mercado</span>
+                        <strong id="catMercadoDisplay" class="privacy-target">R$ 0,00</strong>
+                    </div>
+                    <div class="cat-card">
+                        <span>🏠 Casa & Obras</span>
+                        <strong id="catCasaDisplay" class="privacy-target">R$ 0,00</strong>
+                    </div>
+                    <div class="cat-card">
+                        <span>🎉 Lazer & Alimentação</span>
+                        <strong id="catLazerDisplay" class="privacy-target">R$ 0,00</strong>
+                    </div>
+                </div>
+
+                <div class="transaction-list" id="transactionList"></div>
+            </section>
+
+            <!-- Gastos Fixos -->
+            <section class="card fixed-expenses">
+                <div class="card-header-flex">
+                    <h2>Gastos Fixos Mensais</h2>
+                    <span class="status-badge">📌 Compromissos Recorrentes</span>
+                </div>
+
+                <div class="simulator-box">
+                    <input type="text" id="fixedDesc" placeholder="Ex: Internet / Aluguel">
+                    <input type="number" id="fixedVal" placeholder="Valor (R$)">
+                    <input type="date" id="fixedDate">
+                    <button type="button" onclick="adicionarGastoFixo()">+ Adicionar Conta</button>
+                </div>
+
+                <div class="fixed-list" id="fixedExpensesList"></div>
+
+                <div class="fixed-total-box">
+                    <span>Total Comprometido (Fixos):</span>
+                    <strong id="totalFixedDisplay" class="neon-pink privacy-target">R$ 0,00</strong>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
