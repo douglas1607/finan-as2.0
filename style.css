@@ -548,7 +548,8 @@ main {
 }
 
 #formLoginBox,
-#formCadastroBox {
+#formCadastroBox,
+#formEsqueciBox {
     display: flex;
     flex-direction: column;
     gap: 16px;

@@ -50,7 +50,6 @@ db.serialize(() => {
         vencimento TEXT
     )`);
 
-    // Nova tabela para gerenciar o portfólio de ativos por quantidade e tipo
     db.run(`CREATE TABLE IF NOT EXISTS ativos_portfolio (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         usuario_id INTEGER,
@@ -94,6 +93,28 @@ app.post('/api/login', (req, res) => {
 
         const token = jwt.sign({ id: usuario.id, nome: usuario.nome }, SECRET_JWT, { expiresIn: '24h' });
         res.json({ token, nome: usuario.nome });
+    });
+});
+
+// Nova rota para redefinir senha caso dê divergência ou o banco limpe
+app.post('/api/esqueci-senha', (req, res) => {
+    const { email, novaSenha } = req.body;
+    if (!email || !novaSenha) {
+        return res.status(400).json({ erro: "Informe o e-mail e a nova senha." });
+    }
+
+    db.get(`SELECT * FROM usuarios WHERE email = ?`, [email], (err, usuario) => {
+        if (err || !usuario) {
+            return res.status(404).json({ erro: "E-mail não encontrado no sistema." });
+        }
+
+        const hashSenha = bcrypt.hashSync(novaSenha, 8);
+        db.run(`UPDATE usuarios SET senha = ? WHERE email = ?`, [hashSenha, email], function(err) {
+            if (err) {
+                return res.status(500).json({ erro: "Erro ao atualizar a senha no banco de dados." });
+            }
+            res.json({ mensagem: "Senha alterada com sucesso! Faça login com a nova senha." });
+        });
     });
 });
 
@@ -148,7 +169,6 @@ app.post('/api/gastos-fixos', autenticarToken, (req, res) => {
     });
 });
 
-// Rotas de Ativos do Portfólio
 app.get('/api/ativos', autenticarToken, (req, res) => {
     db.all(`SELECT * FROM ativos_portfolio WHERE usuario_id = ?`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar ativos." });

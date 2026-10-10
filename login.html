@@ -15,7 +15,7 @@
             <h1>FinancIA Autônoma</h1>
         </div>
 
-        <div class="tabs-login">
+        <div class="tabs-login" id="tabsLoginContainer">
             <button id="tabLogin" class="tab-btn active" onclick="mostrarAba('login')">Entrar</button>
             <button id="tabCadastro" class="tab-btn" onclick="mostrarAba('cadastro')">Cadastrar</button>
         </div>
@@ -31,6 +31,9 @@
                 <input type="password" id="loginSenha" placeholder="••••••••" required>
             </div>
             <button type="submit" class="btn-primary-block">Entrar no Painel</button>
+            <div style="margin-top: 15px; text-align: center;">
+                <a href="#" onclick="mostrarEsqueciSenha(event)" style="color: #00ff88; font-size: 13px; text-decoration: none;">Esqueceu a senha? Redefinir</a>
+            </div>
         </form>
 
         <!-- Form Cadastro -->
@@ -49,21 +52,46 @@
             </div>
             <button type="submit" class="btn-primary-block">Criar Minha Conta</button>
         </form>
+
+        <!-- Form Esqueci a Senha -->
+        <form id="formEsqueciBox" style="display: none;" onsubmit="redefinirSenha(event)">
+            <div class="input-group">
+                <label>E-mail Cadastrado</label>
+                <input type="email" id="recEmail" placeholder="seuemail@exemplo.com" required>
+            </div>
+            <div class="input-group">
+                <label>Nova Senha</label>
+                <input type="password" id="recNovaSenha" placeholder="Digite a nova senha" required>
+            </div>
+            <button type="submit" class="btn-primary-block">Atualizar Senha</button>
+            <div style="text-align: center; margin-top: 12px;">
+                <a href="#" onclick="mostrarAba('login')" style="color: #fff; font-size: 13px; text-decoration: none;">Voltar para o Login</a>
+            </div>
+        </form>
     </div>
 
     <script>
-        // Usa o IP direto para bater exatamente onde o servidor escuta
-      const API_URL = 'https://finan-as2-0.onrender.com/api';
+        const API_URL = 'https://finan-as2-0.onrender.com/api';
 
         function mostrarAba(aba) {
+            document.getElementById('tabsLoginContainer').style.display = 'flex';
             document.getElementById('tabLogin').classList.toggle('active', aba === 'login');
             document.getElementById('tabCadastro').classList.toggle('active', aba === 'cadastro');
             document.getElementById('formLoginBox').style.display = aba === 'login' ? 'flex' : 'none';
             document.getElementById('formCadastroBox').style.display = aba === 'cadastro' ? 'flex' : 'none';
+            document.getElementById('formEsqueciBox').style.display = 'none';
+        }
+
+        function mostrarEsqueciSenha(e) {
+            if (e) e.preventDefault();
+            document.getElementById('tabsLoginContainer').style.display = 'none';
+            document.getElementById('formLoginBox').style.display = 'none';
+            document.getElementById('formCadastroBox').style.display = 'none';
+            document.getElementById('formEsqueciBox').style.display = 'flex';
         }
 
         async function efetuarLogin(e) {
-            if (e) e.preventDefault(); // Impede o recarregamento da página
+            if (e) e.preventDefault();
 
             const email = document.getElementById('loginEmail').value.trim();
             const senha = document.getElementById('loginSenha').value;
@@ -90,7 +118,7 @@
         }
 
         async function efetuarCadastro(e) {
-            if (e) e.preventDefault(); // Impede o recarregamento da página
+            if (e) e.preventDefault();
 
             const nome = document.getElementById('cadNome').value.trim();
             const email = document.getElementById('cadEmail').value.trim();
@@ -113,6 +141,32 @@
             } catch (err) {
                 console.error("Erro no Cadastro:", err);
                 alert('Servidor desconectado! Verifique o terminal.');
+            }
+        }
+
+        async function redefinirSenha(e) {
+            if (e) e.preventDefault();
+
+            const email = document.getElementById('recEmail').value.trim();
+            const novaSenha = document.getElementById('recNovaSenha').value;
+
+            try {
+                const res = await fetch(`${API_URL}/esqueci-senha`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, novaSenha })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert(data.mensagem);
+                    mostrarAba('login');
+                } else {
+                    alert(data.erro || 'Erro ao redefinir senha');
+                }
+            } catch (err) {
+                console.error("Erro:", err);
+                alert('Erro ao conectar com o servidor.');
             }
         }
     </script>
