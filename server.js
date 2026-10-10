@@ -146,6 +146,13 @@ app.post('/api/entradas', autenticarToken, (req, res) => {
     });
 });
 
+app.delete('/api/entradas/:id', autenticarToken, (req, res) => {
+    db.run(`DELETE FROM entradas WHERE id = ? AND usuario_id = ?`, [req.params.id, req.usuario.id], function(err) {
+        if (err) return res.status(500).json({ erro: "Erro ao excluir entrada." });
+        res.json({ mensagem: "Entrada removida com sucesso." });
+    });
+});
+
 app.get('/api/extrato', autenticarToken, (req, res) => {
     db.all(`SELECT * FROM transacoes WHERE usuario_id = ? ORDER BY id DESC`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar extrato." });

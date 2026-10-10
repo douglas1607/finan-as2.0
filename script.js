@@ -196,7 +196,7 @@ async function removerAtivo(id) {
 }
 
 // ==========================================================
-// 2. ENTRADAS & SALÁRIOS
+// 2. ENTRADAS & SALÁRIOS (Com exclusão 🗑️)
 // ==========================================================
 async function carregarEntradasBD() {
     try {
@@ -221,7 +221,10 @@ async function carregarEntradasBD() {
                     <strong>${item.descricao}</strong>
                     <small>${item.data}</small>
                 </div>
-                <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">+ R$ ${v.toFixed(2).replace('.', ',')}</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">+ R$ ${v.toFixed(2).replace('.', ',')}</span>
+                    <button onclick="removerEntrada(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir entrada">🗑️</button>
+                </div>
             `;
             container.appendChild(div);
         });
@@ -264,6 +267,22 @@ async function adicionarEntrada() {
         }
     } catch (err) {
         alert("Erro ao salvar entrada.");
+    }
+}
+
+async function removerEntrada(id) {
+    try {
+        const res = await fetch(`${API_URL}/entradas/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            carregarEntradasBD();
+        } else {
+            alert("Erro ao remover entrada.");
+        }
+    } catch (e) {
+        console.log("Erro ao conectar com o servidor.");
     }
 }
 
