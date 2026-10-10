@@ -5,6 +5,7 @@ let modoPrivado = false;
 let chartPortfolio = null;
 let chartAsset = null;
 let chartPerformance = null;
+let chartBalanco = null;
 let valoresReaisOcultos = {};
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -22,6 +23,7 @@ window.addEventListener('DOMContentLoaded', () => {
     carregarDadosDoBD();
     carregarAtivosPortfolio();
     carregarGastosFixosBD();
+    carregarEntradasBD();
 });
 
 function fazerLogout(e) {
@@ -87,7 +89,7 @@ async function carregarAtivosPortfolio() {
         if (container) container.innerHTML = '';
 
         for (let item of listaAtivos) {
-            let valorCalculado = item.quantidade * item.preco_medio;
+            let valorCalculado = item.quantidade * (item.preco_medio || 0);
 
             if (item.tipo === 'Cripto') {
                 try {
@@ -111,7 +113,7 @@ async function carregarAtivosPortfolio() {
                 div.innerHTML = `
                     <div>
                         <strong>${item.ticker} (${item.tipo})</strong>
-                        <small>Qtd: ${item.quantidade} • Total: R$ ${valorCalculado.toFixed(2)}</small>
+                        <small>Qtd: ${item.quantidade} • Preço Médio: R$ ${(item.preco_medio || 0).toFixed(2)} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
                     <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;">🗑️</button>
                 `;
@@ -127,6 +129,7 @@ async function carregarAtivosPortfolio() {
         const patrimonioGeral = totalReserva + totalCripto + totalAcoes + totalFiis;
         atualizarPatrimonioTotalAuto(patrimonioGeral);
 
+        // Atualiza a barra de progresso da Reserva
         const metaTextoAtual = document.getElementById('metaTextDisplay');
         if (metaTextoAtual) {
             let metaDesejada = 10000;
@@ -153,22 +156,11 @@ async function adicionarAtivoPortfolio() {
     const tipo = document.getElementById('inputTipoAtivo').value;
     const ticker = document.getElementById('inputTickerAtivo').value.trim();
     const quantidade = parseFloat(document.getElementById('inputQtdAtivo').value);
+    const precoUnitario = parseFloat(document.getElementById('inputPrecoUnitarioAtivo').value);
 
-    if (!ticker || isNaN(quantidade) || quantidade <= 0) {
-        alert("Preencha o ticker e uma quantidade válida.");
+    if (!ticker || isNaN(quantidade) || quantidade <= 0 || isNaN(precoUnitario) || precoUnitario < 0) {
+        alert("Preencha o ticker, a quantidade e o preço unitário válidos.");
         return;
-    }
-
-    let precoBase = quantidade;
-
-    if (tipo === 'Cripto') {
-        try {
-            const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ticker.toLowerCase()}&vs_currencies=brl`);
-            const data = await res.json();
-            precoBase = data[ticker.toLowerCase()]?.brl || 1;
-        } catch (e) {
-            precoBase = 1;
-        }
     }
 
     try {
@@ -178,12 +170,13 @@ async function adicionarAtivoPortfolio() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio: tipo === 'Reserva' ? 1 : precoBase })
+            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio: tipo === 'Reserva' ? 1 : precoUnitario })
         });
 
         if (res.ok) {
             document.getElementById('inputTickerAtivo').value = '';
             document.getElementById('inputQtdAtivo').value = '';
+            document.getElementById('inputPrecoUnitarioAtivo').value = '';
             alternarFormulario('formAlocacao');
             carregarAtivosPortfolio();
         }
@@ -203,7 +196,79 @@ async function removerAtivo(id) {
 }
 
 // ==========================================================
-// 2. EXTRATO E CATEGORIZAÇÃO IA (OPEN FINANCE)
+// 2. ENTRADAS & SALÁRIOS
+// ==========================================================
+async function carregarEntradasBD() {
+    try {
+        const res = await fetch(`${API_URL}/entradas`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const lista = await res.json();
+        const container = document.getElementById('listaEntradasCadastradas');
+        if (!container) return;
+
+        container.innerHTML = '';
+        let totalEntradas = 0;
+
+        lista.forEach(item => {
+            const v = parseFloat(item.valor) || 0;
+            totalEntradas += v;
+
+            const div = document.createElement('div');
+            div.className = 'transaction-item';
+            div.innerHTML = `
+                <div>
+                    <strong>${item.descricao}</strong>
+                    <small>${item.data}</small>
+                </div>
+                <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">+ R$ ${v.toFixed(2).replace('.', ',')}</span>
+            `;
+            container.appendChild(div);
+        });
+
+        const display = document.getElementById('totalEntradasDisplay');
+        if (display) display.innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+        atualizarGraficoBalanco();
+    } catch (e) {
+        console.log("Erro ao carregar entradas.");
+    }
+}
+
+async function adicionarEntrada() {
+    const descInput = document.getElementById('entradaDesc');
+    const valInput = document.getElementById('entradaVal');
+
+    const descricao = descInput ? descInput.value.trim() : '';
+    const valor = parseFloat(valInput ? valInput.value.replace(',', '.') : 0);
+
+    if (!descricao || isNaN(valor) || valor <= 0) {
+        alert("Preencha a descrição e o valor da entrada.");
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/entradas`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ descricao, valor })
+        });
+
+        if (res.ok) {
+            descInput.value = '';
+            valInput.value = '';
+            carregarEntradasBD();
+        }
+    } catch (err) {
+        alert("Erro ao salvar entrada.");
+    }
+}
+
+// ==========================================================
+// 3. EXTRATO E CATEGORIZAÇÃO IA (OPEN FINANCE)
 // ==========================================================
 async function carregarDadosDoBD() {
     try {
@@ -239,6 +304,8 @@ async function carregarDadosDoBD() {
         document.getElementById('catMercadoDisplay').innerText = `R$ ${tMercado.toFixed(2).replace('.', ',')}`;
         document.getElementById('catCasaDisplay').innerText = `R$ ${tCasa.toFixed(2).replace('.', ',')}`;
         document.getElementById('catLazerDisplay').innerText = `R$ ${tLazer.toFixed(2).replace('.', ',')}`;
+        
+        atualizarGraficoBalanco();
     } catch (e) {
         console.log("Erro ao carregar extrato.");
     }
@@ -280,7 +347,7 @@ async function adicionarGastoSimulado(e) {
 }
 
 // ==========================================================
-// 3. GASTOS FIXOS MENSAIS
+// 4. GASTOS FIXOS MENSAIS
 // ==========================================================
 async function carregarGastosFixosBD() {
     try {
@@ -314,6 +381,8 @@ async function carregarGastosFixosBD() {
         if (totalFixedDisplay) {
             totalFixedDisplay.innerText = `R$ ${totalFixed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
         }
+        
+        atualizarGraficoBalanco();
     } catch (e) {
         console.log("Erro ao carregar gastos fixos.");
     }
@@ -354,16 +423,14 @@ async function adicionarGastoFixo() {
             valInput.value = '';
             if (dateInput) dateInput.value = '';
             carregarGastosFixosBD();
-        } else {
-            alert("Erro ao salvar gasto fixo.");
         }
     } catch (err) {
-        alert("Servidor backend indisponível.");
+        alert("Erro ao salvar gasto fixo.");
     }
 }
 
 // ==========================================================
-// 4. APORTES MENSAIS E GRÁFICOS
+// 5. APORTES MENSAIS E GRÁFICOS
 // ==========================================================
 function inicializarGraficos() {
     const pCanvas = document.getElementById('portfolioChart');
@@ -392,6 +459,32 @@ function inicializarGraficos() {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
         });
     }
+
+    const balancoCanvas = document.getElementById('balancoChart');
+    if (balancoCanvas) {
+        chartBalanco = new Chart(balancoCanvas.getContext('2d'), {
+            type: 'bar',
+            data: { labels: ['Entradas', 'Saídas'], datasets: [{ label: 'R$', data: [0, 0], backgroundColor: ['#00ff88', '#ff6b6b'] }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+}
+
+function atualizarGraficoBalanco() {
+    if (!chartBalanco) return;
+    const totalEntradas = Array.from(document.querySelectorAll('#listaEntradasCadastradas .transaction-item span'))
+        .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('+ R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
+
+    const totalFixos = Array.from(document.querySelectorAll('#fixedExpensesList .fixed-amount'))
+        .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
+
+    const totalVariaveis = Array.from(document.querySelectorAll('#transactionList .trans-amount'))
+        .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('- R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
+
+    const totalSaidas = totalFixos + totalVariaveis;
+
+    chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidas];
+    chartBalanco.update();
 }
 
 async function buscarCotacaoBitcoinAoVivo() {
@@ -419,7 +512,7 @@ function salvarMetaReserva() {
     alternarFormulario('formMeta');
 }
 
-function adicionarAporteMes() {
+async function adicionarAporteMes() {
     const inputMes = document.getElementById('inputAporteMes');
     const inputVal = document.getElementById('inputAporteVal');
 
@@ -437,11 +530,27 @@ function adicionarAporteMes() {
         chartPerformance.update();
     }
 
-    // Soma o aporte diretamente no patrimônio total exibido
+    // Soma o aporte diretamente no patrimônio total exibido e na Meta de Reserva
     const totalDisplay = document.getElementById('totalPortfolioDisplay');
     if (totalDisplay) {
         let atual = parseFloat(totalDisplay.innerText.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0;
         atualizarPatrimonioTotalAuto(atual + v);
+    }
+
+    const metaTextoAtual = document.getElementById('metaTextDisplay');
+    if (metaTextoAtual) {
+        let metaDesejada = 10000;
+        let reservaAtual = v;
+        const textoAtual = metaTextoAtual.innerText;
+        if (textoAtual.includes('/')) {
+            const partes = textoAtual.split('/');
+            if (partes[0]) reservaAtual += (parseFloat(partes[0].replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0);
+            if (partes[1]) metaDesejada = parseFloat(partes[1].replace('R$', '').replace(/\./g, '').replace(',', '.')) || 10000;
+        }
+        const pct = Math.min(Math.round((reservaAtual / metaDesejada) * 100), 100);
+        metaTextoAtual.innerText = `R$ ${reservaAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${metaDesejada.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct}%)`;
+        const barra = document.getElementById('metaProgressBar');
+        if (barra) barra.style.width = `${pct}%`;
     }
 
     inputMes.value = '';
@@ -459,4 +568,4 @@ async function gerarRelatorioPDF(e) {
     doc.setFontSize(18);
     doc.text("FinancIA Autônoma - Extrato Mensal", 14, 20);
     doc.save(`FinancIA_Extrato_${Date.now()}.pdf`);
-} 
+}

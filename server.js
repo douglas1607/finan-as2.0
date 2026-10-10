@@ -58,6 +58,14 @@ db.serialize(() => {
         quantidade REAL,
         preco_medio REAL
     )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS entradas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER,
+        descricao TEXT,
+        valor REAL,
+        data TEXT
+    )`);
 });
 
 function autenticarToken(req, res, next) {
@@ -96,7 +104,6 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// Nova rota para redefinir senha caso dê divergência ou o banco limpe
 app.post('/api/esqueci-senha', (req, res) => {
     const { email, novaSenha } = req.body;
     if (!email || !novaSenha) {
@@ -118,6 +125,27 @@ app.post('/api/esqueci-senha', (req, res) => {
     });
 });
 
+// Rotas de Entradas / Salários
+app.get('/api/entradas', autenticarToken, (req, res) => {
+    db.all(`SELECT * FROM entradas WHERE usuario_id = ? ORDER BY id DESC`, [req.usuario.id], (err, rows) => {
+        if (err) return res.status(500).json({ erro: "Erro ao buscar entradas." });
+        res.json(rows);
+    });
+});
+
+app.post('/api/entradas', autenticarToken, (req, res) => {
+    const { descricao, valor } = req.body;
+    const valNum = parseFloat(valor);
+    if (!descricao || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
+
+    const dataHoje = new Date().toLocaleDateString('pt-BR');
+    db.run(`INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES (?, ?, ?, ?)`, 
+        [req.usuario.id, descricao, valNum, dataHoje], function(err) {
+            if (err) return res.status(500).json({ erro: "Erro ao salvar entrada." });
+            res.status(201).json({ id: this.lastID, descricao, valor: valNum, data: dataHoje });
+    });
+});
+
 app.get('/api/extrato', autenticarToken, (req, res) => {
     db.all(`SELECT * FROM transacoes WHERE usuario_id = ? ORDER BY id DESC`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar extrato." });
@@ -132,7 +160,13 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
 
     let categoriaIA = "Lazer";
     try {
-        const prompt = `Classifique a compra em APENAS UMA palavra (Mercado, Casa ou Lazer):\nCompra: "${descricao}"`;
+        const prompt = `Classifique a compra estritamente em APENAS UMA destas três palavras exatas: "Mercado", "Casa" ou "Lazer". 
+Regras:
+- "Mercado": use para compras de supermercado, feira, açougue, hortifrúti, compras semanais de alimentos ou itens de dispensa.
+- "Casa": use para materiais de construção, reformas, ferramentas, cimento, telhas, móveis ou manutenção residencial.
+- "Lazer": use apenas para entretenimento, passeios, streaming, jogos ou restaurantes/lanchonetes que não sejam compras de mercado.
+Compra: "${descricao}"`;
+        
         const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
         
         if (response && response.text) {

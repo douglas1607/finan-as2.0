@@ -229,7 +229,7 @@ main {
     font-weight: 700;
 }
 
-/* Distribuição das Colunas */
+/* Distribuição das Colunas do Dashboard */
 .main-portfolio { grid-column: span 8; }
 .asset-allocation { grid-column: span 4; }
 .trading-feed-card { grid-column: span 5; }
@@ -286,7 +286,7 @@ main {
 }
 
 /* ========================================================== */
-/* ESTILIZAÇÃO COMPLETA DAS CAIXINHAS DE EDIÇÃO/FORMULÁRIOS   */
+/* CAIXINHAS DE EDIÇÃO / FORMULÁRIOS                          */
 /* ========================================================== */
 .simulator-box {
     display: flex;
@@ -479,8 +479,18 @@ main {
     margin-top: 15px;
 }
 
+.status-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--verde-destaque);
+    background: rgba(0, 255, 136, 0.08);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--borda-verde-suave);
+}
+
 /* ========================================================== */
-/* 5. TELA DE LOGIN E CADASTRO (ORGANIZADA)                   */
+/* 5. TELA DE LOGIN E CADASTRO                                */
 /* ========================================================== */
 .login-page {
     display: flex;
@@ -513,6 +523,7 @@ main {
 
 .logo-login .logo-icon {
     font-size: 2rem;
+    color: var(--verde-destaque);
 }
 
 .logo-login h1 {
@@ -639,7 +650,7 @@ main {
     }
 
     .dashboard-content {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr !important;
     }
 
     .main-portfolio,
@@ -649,7 +660,8 @@ main {
     .revenue-progress,
     .performance-overview,
     .expense-tracker,
-    .fixed-expenses {
+    .fixed-expenses,
+    .dashboard-content > .card {
         grid-column: span 1 !important;
     }
 
