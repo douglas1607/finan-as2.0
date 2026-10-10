@@ -459,4 +459,4 @@ async function gerarRelatorioPDF(e) {
     doc.setFontSize(18);
     doc.text("FinancIA Autônoma - Extrato Mensal", 14, 20);
     doc.save(`FinancIA_Extrato_${Date.now()}.pdf`);
-} lternarFormulario('formAporte');
+} 
