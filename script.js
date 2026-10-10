@@ -1,4 +1,4 @@
-const API_URL = 'https://finan-as2-0.onrender.com';
+const API_URL = 'https://finan-as2-0.onrender.com/api';
 let token = localStorage.getItem('financia_token');
 let modoPrivado = false;
 
