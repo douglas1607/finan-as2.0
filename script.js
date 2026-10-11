@@ -25,7 +25,7 @@ window.addEventListener('DOMContentLoaded', () => {
     carregarAtivosPortfolio();
     carregarGastosFixosBD();
     carregarEntradasBD();
-    carregarAportesBD(); // Carrega os aportes salvos no BD ao iniciar
+    carregarAportesBD();
 });
 
 function fazerLogout(e) {
@@ -445,6 +445,7 @@ async function marcarGastoComoPago(id) {
         });
         if (res.ok) {
             carregarGastosFixosBD();
+            carregarDadosDoBD(); // Atualiza o extrato e desconta automaticamente das entradas disponíveis
         } else {
             alert("Erro ao dar baixa na conta.");
         }
@@ -610,7 +611,7 @@ async function adicionarAporteMes() {
             inputMes.value = '';
             inputVal.value = '';
             alternarFormulario('formAporte');
-            carregarAportesBD(); // Recarrega os aportes direto do banco de dados
+            carregarAportesBD();
         } else {
             alert("Erro ao salvar aporte no servidor.");
         }

@@ -95,7 +95,6 @@ main {
     gap: 16px;
 }
 
-/* --- LOGO FINANC.IA AUTÔNOMA --- */
 .logo {
     display: flex;
     align-items: center;
@@ -304,7 +303,6 @@ main {
     font-weight: 700;
 }
 
-/* Distribuição das Colunas no Desktop */
 .main-portfolio { grid-column: span 8; }
 .asset-allocation { grid-column: span 4; }
 .trading-feed-card { grid-column: span 5; }
@@ -574,140 +572,8 @@ main {
     border: 1px solid var(--borda-vidro);
 }
 
-.termometro-box {
-    background: rgba(2, 12, 9, 0.45);
-    padding: 16px;
-    border-radius: 14px;
-    border: 1px solid var(--borda-vidro);
-}
-
 /* ========================================================== */
-/* 5. TELA DE LOGIN E CADASTRO MODERNA                        */
-/* ========================================================== */
-.login-page {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
-}
-
-.login-card {
-    background: var(--verde-card);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--borda-vidro);
-    padding: 40px 32px;
-    border-radius: 24px;
-    width: 100%;
-    max-width: 440px;
-    box-shadow: var(--sombra-card);
-    display: flex;
-    flex-direction: column;
-}
-
-.logo-login {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 28px;
-    gap: 10px;
-}
-
-.logo-login .logo-icon {
-    font-size: 2.4rem;
-}
-
-.logo-login h1 {
-    font-size: 1.3rem;
-    color: var(--branco);
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    font-weight: 800;
-    margin: 0;
-}
-
-.tabs-login {
-    display: flex;
-    margin-bottom: 28px;
-    border-bottom: 1px solid var(--borda-vidro);
-}
-
-.tab-btn {
-    flex: 1;
-    padding: 12px;
-    background: none;
-    border: none;
-    color: var(--texto-secundario);
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: var(--transicao-suave);
-}
-
-.tab-btn.active {
-    color: var(--verde-destaque);
-    border-bottom: 2px solid var(--verde-destaque);
-}
-
-#formLoginBox,
-#formCadastroBox,
-#formEsqueciBox {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    width: 100%;
-}
-
-.input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-}
-
-.input-group label {
-    font-size: 0.8rem;
-    color: var(--texto-secundario);
-    font-weight: 600;
-}
-
-.input-group input {
-    width: 100%;
-    background: rgba(2, 12, 9, 0.8);
-    border: 1px solid var(--borda-vidro);
-    padding: 14px 16px;
-    border-radius: 12px;
-    color: var(--branco);
-    font-size: 0.95rem;
-    font-family: inherit;
-    outline: none;
-    transition: var(--transicao-suave);
-}
-
-.input-group input:focus {
-    border-color: var(--verde-destaque);
-    box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
-}
-
-.btn-primary-block {
-    width: 100%;
-    padding: 16px;
-    background: linear-gradient(135deg, var(--verde-destaque) 0%, var(--verde-hover) 100%);
-    color: var(--verde-fundo-profundo);
-    border: none;
-    border-radius: 12px;
-    font-weight: 800;
-    font-size: 1rem;
-    cursor: pointer;
-    margin-top: 12px;
-    transition: var(--transicao-suave);
-    box-shadow: 0 4px 16px rgba(0, 255, 136, 0.35);
-}
-
-/* ========================================================== */
-/* 6. RESPONSIVIDADE CORRIGIDA (MODO CELULAR EMPILHADO 100%)  */
+/* 6. RESPONSIVIDADE E AJUSTE DOS ITENS FIXOS NO CELULAR      */
 /* ========================================================== */
 @media screen and (max-width: 850px) {
     body {
@@ -744,7 +610,6 @@ main {
         padding-top: 12px;
     }
 
-    /* FORÇA O CONTAINER A VIRAR FLEXBOX EMPILHADO */
     .dashboard-content {
         display: flex !important;
         flex-direction: column !important;
@@ -752,7 +617,6 @@ main {
         gap: 18px !important;
     }
 
-    /* FORÇA CADA CARD A OCUPAR 100% DA LARGURA DA TELA */
     .card,
     .main-portfolio,
     .asset-allocation,
@@ -778,12 +642,35 @@ main {
         gap: 12px !important;
     }
 
-    .portfolio-value {
-        font-size: 1.8rem;
+    /* AJUSTE RESPONSIVO PARA OS CARDS DE CONTAS FIXAS NO CELULAR */
+    .fixed-item {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+        padding: 16px !important;
     }
 
-    .login-card {
-        padding: 28px 20px;
-        border-radius: 20px;
+    .fixed-item > div:first-child {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .fixed-item > div:last-child {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-top: 1px solid var(--borda-vidro);
+        padding-top: 10px;
+    }
+
+    .fixed-amount {
+        font-size: 1.1rem;
+    }
+
+    .portfolio-value {
+        font-size: 1.8rem;
     }
 }

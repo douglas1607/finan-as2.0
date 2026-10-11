@@ -134,7 +134,6 @@ app.post('/api/esqueci-senha', (req, res) => {
     });
 });
 
-// Rotas de Entradas / Salários
 app.get('/api/entradas', autenticarToken, (req, res) => {
     db.all(`SELECT * FROM entradas WHERE usuario_id = ? ORDER BY id DESC`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar entradas." });
@@ -162,7 +161,6 @@ app.delete('/api/entradas/:id', autenticarToken, (req, res) => {
     });
 });
 
-// Rotas de Aportes / Reserva
 app.get('/api/aportes', autenticarToken, (req, res) => {
     db.all(`SELECT * FROM aportes WHERE usuario_id = ? ORDER BY id ASC`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar aportes." });
@@ -255,10 +253,24 @@ app.post('/api/gastos-fixos', autenticarToken, (req, res) => {
     });
 });
 
+// Marca conta como paga E insere automaticamente no extrato de transações
 app.put('/api/gastos-fixos/:id/pago', autenticarToken, (req, res) => {
-    db.run(`UPDATE gastos_fixos SET pago = 1 WHERE id = ? AND usuario_id = ?`, [req.params.id, req.usuario.id], function(err) {
-        if (err) return res.status(500).json({ erro: "Erro ao dar baixa no pagamento." });
-        res.json({ mensagem: "Conta marcada como paga com sucesso!" });
+    const gastoId = req.params.id;
+    const usuarioId = req.usuario.id;
+
+    db.get(`SELECT * FROM gastos_fixos WHERE id = ? AND usuario_id = ?`, [gastoId, usuarioId], (err, conta) => {
+        if (err || !conta) return res.status(404).json({ erro: "Conta fixa não encontrada." });
+
+        db.run(`UPDATE gastos_fixos SET pago = 1 WHERE id = ? AND usuario_id = ?`, [gastoId, usuarioId], function(err) {
+            if (err) return res.status(500).json({ erro: "Erro ao atualizar conta fixa." });
+
+            const dataHoje = new Date().toLocaleDateString('pt-BR');
+            db.run(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES (?, ?, ?, ?, ?)`,
+                [usuarioId, `[PAGO] ${conta.descricao}`, conta.valor, 'Casa', dataHoje], function(err) {
+                    if (err) console.error("Erro ao inserir pagamento no extrato.");
+                    res.json({ mensagem: "Pagamento registrado e abatido das entradas com sucesso!" });
+            });
+        });
     });
 });
 
