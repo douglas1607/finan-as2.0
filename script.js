@@ -324,7 +324,7 @@ async function removerEntrada(id) {
 }
 
 // ==========================================================
-// 3. EXTRATO E CATEGORIZAÇÃO IA (OPEN FINANCE)
+// 3. EXTRATO E CATEGORIZAÇÃO IA (OPEN FINANCE - 5 CATEGORIAS)
 // ==========================================================
 async function carregarDadosDoBD() {
     try {
@@ -337,13 +337,15 @@ async function carregarDadosDoBD() {
         if (!listContainer) return;
 
         listContainer.innerHTML = '';
-        let tMercado = 0, tCasa = 0, tLazer = 0;
+        let tMercado = 0, tCasa = 0, tLazer = 0, tTransporte = 0, tCompras = 0;
 
         lista.forEach(item => {
             const v = parseFloat(item.valor) || 0;
             if (item.categoria === 'Mercado') tMercado += v;
             else if (item.categoria === 'Casa') tCasa += v;
             else if (item.categoria === 'Lazer') tLazer += v;
+            else if (item.categoria === 'Transporte') tTransporte += v;
+            else if (item.categoria === 'Compras') tCompras += v;
 
             const div = document.createElement('div');
             div.className = 'transaction-item';
@@ -360,9 +362,11 @@ async function carregarDadosDoBD() {
             listContainer.appendChild(div);
         });
 
-        document.getElementById('catMercadoDisplay').innerText = `R$ ${tMercado.toFixed(2).replace('.', ',')}`;
-        document.getElementById('catCasaDisplay').innerText = `R$ ${tCasa.toFixed(2).replace('.', ',')}`;
-        document.getElementById('catLazerDisplay').innerText = `R$ ${tLazer.toFixed(2).replace('.', ',')}`;
+        if (document.getElementById('catMercadoDisplay')) document.getElementById('catMercadoDisplay').innerText = `R$ ${tMercado.toFixed(2).replace('.', ',')}`;
+        if (document.getElementById('catCasaDisplay')) document.getElementById('catCasaDisplay').innerText = `R$ ${tCasa.toFixed(2).replace('.', ',')}`;
+        if (document.getElementById('catLazerDisplay')) document.getElementById('catLazerDisplay').innerText = `R$ ${tLazer.toFixed(2).replace('.', ',')}`;
+        if (document.getElementById('catTransporteDisplay')) document.getElementById('catTransporteDisplay').innerText = `R$ ${tTransporte.toFixed(2).replace('.', ',')}`;
+        if (document.getElementById('catComprasDisplay')) document.getElementById('catComprasDisplay').innerText = `R$ ${tCompras.toFixed(2).replace('.', ',')}`;
         
         atualizarGraficoBalanco();
     } catch (e) { }
