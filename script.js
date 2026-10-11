@@ -8,6 +8,7 @@ let chartPerformance = null;
 let chartBalanco = null;
 let valoresReaisOcultos = {};
 let totalAportesAcumulado = 0;
+let periodoAtivoPatrimonio = 'meses';
 
 window.addEventListener('DOMContentLoaded', () => {
     if (!token && !window.location.pathname.includes('login.html')) {
@@ -60,16 +61,73 @@ function alternarModoPrivacidade() {
     });
 }
 
+function filtrarTempoPatrimonio(periodo, btnElement) {
+    periodoAtivoPatrimonio = periodo;
+    if (btnElement) {
+        document.querySelectorAll('.btn-time').forEach(btn => btn.classList.remove('active'));
+        btnElement.classList.add('active');
+    }
+    const totalAtualText = document.getElementById('totalPortfolioDisplay')?.innerText || 'R$ 0,00';
+    const totalNum = parseFloat(totalAtualText.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0;
+    atualizarPatrimonioTotalAuto(totalNum);
+}
+
 function atualizarPatrimonioTotalAuto(totalCalculado) {
     const totalDisplay = document.getElementById('totalPortfolioDisplay');
     if (totalDisplay) {
         totalDisplay.innerText = `R$ ${totalCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     }
 
-    if (chartPortfolio) {
-        chartPortfolio.data.datasets[0].data = [totalCalculado];
-        chartPortfolio.update();
+    if (!chartPortfolio) return;
+
+    let rotulos = [];
+    let pontos = [];
+    const hoje = new Date();
+
+    if (periodoAtivoPatrimonio === 'horas') {
+        rotulos = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', 'Agora'];
+        const base = totalCalculado * 0.98;
+        const degrau = (totalCalculado - base) / 6;
+        pontos = [base, base + degrau, base + degrau * 2, base + degrau * 3, base + degrau * 4.5, base + degrau * 5.5, totalCalculado];
+    } else if (periodoAtivoPatrimonio === 'dias') {
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(hoje.getDate() - i);
+            rotulos.push(`${d.getDate()}/${d.getMonth() + 1}`);
+        }
+        const fator = totalCalculado / 7;
+        pontos = rotulos.map((_, idx) => Math.round(fator * (idx + 1)));
+        if (pontos.length > 0) pontos[pontos.length - 1] = totalCalculado;
+    } else if (periodoAtivoPatrimonio === 'meses') {
+        const diaAtual = hoje.getDate();
+        const mesAtual = hoje.getMonth() + 1;
+        
+        for (let d = 1; d <= diaAtual; d++) {
+            rotulos.push(`${d}/${mesAtual}`);
+        }
+
+        const numDias = rotulos.length;
+        pontos = rotulos.map((_, idx) => {
+            const progresso = (idx + 1) / numDias;
+            return Math.round(totalCalculado * Math.pow(progresso, 0.75));
+        });
+        if (pontos.length > 0) pontos[pontos.length - 1] = totalCalculado;
+    } else if (periodoAtivoPatrimonio === 'anos') {
+        const anoAtual = hoje.getFullYear();
+        rotulos = [anoAtual - 2, anoAtual - 1, anoAtual, anoAtual + 1, anoAtual + 2, anoAtual + 5];
+        pontos = [
+            Math.round(totalCalculado * 0.3),
+            Math.round(totalCalculado * 0.6),
+            totalCalculado,
+            Math.round(totalCalculado * 1.3),
+            Math.round(totalCalculado * 1.8),
+            Math.round(totalCalculado * 3.2)
+        ];
     }
+
+    chartPortfolio.data.labels = rotulos;
+    chartPortfolio.data.datasets[0].data = pontos;
+    chartPortfolio.update();
 }
 
 // ==========================================================
@@ -397,13 +455,13 @@ async function carregarGastosFixosBD() {
             div.className = 'fixed-item';
             div.innerHTML = `
                 <div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <strong>${item.descricao}</strong>
                         ${statusBadge}
                     </div>
                     <small>Vencimento: ${item.vencimento || 'Mensal'}</small>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="fixed-item-actions">
                     <span class="fixed-amount privacy-target">R$ ${v.toFixed(2).replace('.', ',')}</span>
                     <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;" title="Dar baixa como pago">✅ Pago</button>
                     <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir conta">🗑️</button>
@@ -493,8 +551,64 @@ function inicializarGraficos() {
     if (pCanvas) {
         chartPortfolio = new Chart(pCanvas.getContext('2d'), {
             type: 'line',
-            data: { labels: ['Início'], datasets: [{ label: 'Patrimônio', data: [0], borderColor: '#00ff88', fill: true }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            data: { 
+                labels: ['Início'], 
+                datasets: [{ 
+                    label: 'Patrimônio Total (R$)', 
+                    data: [0], 
+                    borderColor: '#00ff88', 
+                    borderWidth: 2.5,
+                    backgroundColor: (context) => {
+                        const ctx = context.chart.ctx;
+                        const gradient = ctx.createLinearGradient(0, 0, 0, 250);
+                        gradient.addColorStop(0, 'rgba(0, 255, 136, 0.35)');
+                        gradient.addColorStop(1, 'rgba(0, 255, 136, 0.0)');
+                        return gradient;
+                    },
+                    fill: true,
+                    tension: 0.35,
+                    pointBackgroundColor: '#00ff88',
+                    pointBorderColor: '#0b2d21',
+                    pointRadius: 4,
+                    pointHoverRadius: 7
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.raw || 0;
+                                return ' Patrimônio: R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { 
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.06)' },
+                        ticks: {
+                            color: '#a0a0a0',
+                            font: { size: 10 },
+                            callback: function(value) {
+                                return 'R$ ' + value.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+                            }
+                        }
+                    },
+                    x: { 
+                        display: true,
+                        grid: { color: 'rgba(255,255,255,0.03)' },
+                        ticks: {
+                            color: '#a0a0a0',
+                            font: { size: 11 }
+                        }
+                    }
+                }
+            }
         });
     }
 

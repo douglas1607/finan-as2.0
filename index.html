@@ -45,11 +45,19 @@
         </header>
 
         <main class="dashboard-content">
-            <!-- Patrimônio Total -->
+            <!-- Patrimônio Total com Seletor Temporal -->
             <section class="card main-portfolio">
-                <div class="card-header-flex">
+                <div class="card-header-flex header-patrimonio-flex">
                     <h2>Evolução do Patrimônio Total</h2>
-                    <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir Saldo</button>
+                    <div class="patrimonio-acoes-topo">
+                        <div class="time-filter-group">
+                            <button class="btn-time active" onclick="filtrarTempoPatrimonio('horas', this)">1H</button>
+                            <button class="btn-time" onclick="filtrarTempoPatrimonio('dias', this)">7D</button>
+                            <button class="btn-time" onclick="filtrarTempoPatrimonio('meses', this)">1M</button>
+                            <button class="btn-time" onclick="filtrarTempoPatrimonio('anos', this)">1A</button>
+                        </div>
+                        <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir Saldo</button>
+                    </div>
                 </div>
 
                 <div id="formPatrimonio" class="simulator-box" style="display: none;">
@@ -175,7 +183,6 @@
                     <button type="button" onclick="adicionarAporteMes()">Registrar Aporte</button>
                 </div>
 
-                <!-- Container adicionado para listar os aportes salvos com o botão de excluir -->
                 <div class="transaction-list" id="listaAportesCadastrados" style="margin-top: 15px; margin-bottom: 15px;"></div>
 
                 <div class="chart-container">
@@ -197,8 +204,7 @@
                 <div class="transaction-list" id="listaEntradasCadastradas"></div>
                 <div class="fixed-total-box" style="margin-top: 10px;">
                     <span>Total Entradas:</span>
-                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$
-                        0,00</strong>
+                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$ 0,00</strong>
                 </div>
             </section>
 
@@ -212,20 +218,16 @@
                     <canvas id="balancoChart"></canvas>
                 </div>
 
-                <!-- Indicador Visual de Comprometimento Financeiro -->
                 <div class="termometro-box" style="margin-top: 15px;">
                     <div class="meta-info" style="margin: 0 0 5px 0;">
                         <span>Comprometimento do Orçamento:</span>
                         <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
                     </div>
                     <div class="progress-track">
-                        <div class="progress-bar" id="barraGastoProporcao"
-                            style="width: 0%; background-color: var(--verde-destaque);"></div>
+                        <div class="progress-bar" id="barraGastoProporcao" style="width: 0%; background-color: var(--verde-destaque);"></div>
                     </div>
-                    <small id="alertaGastoTexto"
-                        style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
-                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos
-                        e reserva.
+                    <small id="alertaGastoTexto" style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
+                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos e reserva.
                     </small>
                 </div>
             </section>

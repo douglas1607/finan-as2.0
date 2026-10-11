@@ -95,7 +95,6 @@ main {
     gap: 16px;
 }
 
-/* --- LOGO PADRÃO (PAINEL E LOGIN) --- */
 .logo {
     display: flex;
     align-items: center;
@@ -124,12 +123,6 @@ main {
     font-family: 'Montserrat', sans-serif;
 }
 
-.logo:hover .logo-icon-badge,
-.logo-login:hover .logo-icon-badge {
-    transform: rotate(5deg) scale(1.05);
-    box-shadow: 0 0 18px rgba(0, 255, 136, 0.5);
-}
-
 .logo-text-group {
     display: flex;
     flex-direction: column;
@@ -138,8 +131,7 @@ main {
 }
 
 .logo-text-group h1,
-.logo h1, 
-.texto-logo {
+.logo h1 {
     font-size: 1.25rem;
     font-weight: 800;
     color: var(--branco);
@@ -161,14 +153,6 @@ main {
     letter-spacing: 2px;
     text-transform: uppercase;
     margin-top: 2px;
-}
-
-.foto-perfil-nav {
-    width: 55px;
-    height: 55px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 1.5px solid var(--verde-destaque);
 }
 
 .header-nav {
@@ -316,7 +300,7 @@ main {
 .fixed-expenses { grid-column: span 12; }
 
 .chart-container {
-    height: 200px;
+    height: 220px;
     position: relative;
     width: 100%;
 }
@@ -329,6 +313,43 @@ main {
     letter-spacing: -0.5px;
 }
 
+/* --- SELETOR DE TEMPO DO GRÁFICO DE PATRIMÔNIO --- */
+.patrimonio-acoes-topo {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.time-filter-group {
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-time {
+    background: transparent;
+    border: none;
+    color: var(--texto-secundario);
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: var(--transicao-suave);
+}
+
+.btn-time:hover {
+    color: #00ff88;
+}
+
+.btn-time.active {
+    background: #00ff88;
+    color: #0b2d21;
+}
+
 /* ========================================================== */
 /* 4. ELEMENTOS INTERNOS, BOTÕES E FORMULÁRIOS FLUIDOS        */
 /* ========================================================== */
@@ -337,6 +358,8 @@ main {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 18px;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .card-header-flex h2 {
@@ -373,6 +396,7 @@ main {
     border: 1px solid var(--borda-vidro);
     box-sizing: border-box;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .simulator-box-col {
@@ -462,6 +486,7 @@ main {
     display: flex;
     gap: 16px;
     align-items: stretch;
+    flex-wrap: wrap;
 }
 
 .forecast-item {
@@ -470,6 +495,7 @@ main {
     border-radius: 14px;
     border: 1px solid var(--borda-vidro);
     flex: 1;
+    min-width: 180px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -511,6 +537,7 @@ main {
     display: flex;
     gap: 16px;
     margin-bottom: 18px;
+    flex-wrap: wrap;
 }
 
 .cat-card {
@@ -519,6 +546,7 @@ main {
     padding: 16px;
     border-radius: 14px;
     flex: 1;
+    min-width: 140px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -545,9 +573,17 @@ main {
     background: rgba(2, 12, 9, 0.5);
     padding: 14px 18px;
     border-radius: 12px;
-    border-left: 4px solid var(--verde-destaque);
     border: 1px solid var(--borda-vidro);
-    border-left-width: 4px;
+    border-left: 4px solid var(--verde-destaque);
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.fixed-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .trans-amount.expense { color: #ff7676; font-weight: 700; }
@@ -576,123 +612,7 @@ main {
 }
 
 /* ========================================================== */
-/* 5. TELA DE LOGIN E CADASTRO MODERNA                        */
-/* ========================================================== */
-.login-page {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
-}
-
-.login-card {
-    background: var(--verde-card);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--borda-vidro);
-    padding: 40px 32px;
-    border-radius: 24px;
-    width: 100%;
-    max-width: 440px;
-    box-shadow: var(--sombra-card);
-    display: flex;
-    flex-direction: column;
-}
-
-.logo-login {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 28px;
-    gap: 14px;
-}
-
-.tabs-login {
-    display: flex;
-    margin-bottom: 28px;
-    border-bottom: 1px solid var(--borda-vidro);
-}
-
-.tab-btn {
-    flex: 1;
-    padding: 12px;
-    background: none;
-    border: none;
-    color: var(--texto-secundario);
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: var(--transicao-suave);
-}
-
-.tab-btn.active {
-    color: var(--verde-destaque);
-    border-bottom: 2px solid var(--verde-destaque);
-}
-
-#formLoginBox,
-#formCadastroBox,
-#formEsqueciBox {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    width: 100%;
-}
-
-.input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-}
-
-.input-group label {
-    font-size: 0.8rem;
-    color: var(--texto-secundario);
-    font-weight: 600;
-}
-
-.input-group input {
-    width: 100%;
-    background: rgba(2, 12, 9, 0.8);
-    border: 1px solid var(--borda-vidro);
-    padding: 14px 16px;
-    border-radius: 12px;
-    color: var(--branco);
-    font-size: 0.95rem;
-    font-family: inherit;
-    outline: none;
-    transition: var(--transicao-suave);
-}
-
-.input-group input:focus {
-    border-color: var(--verde-destaque);
-    box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
-}
-
-.btn-primary-block {
-    width: 100%;
-    padding: 16px;
-    background: linear-gradient(135deg, var(--verde-destaque) 0%, var(--verde-hover) 100%);
-    color: var(--verde-fundo-profundo);
-    border: none;
-    border-radius: 12px;
-    font-weight: 800;
-    font-size: 1rem;
-    cursor: pointer;
-    margin-top: 12px;
-    transition: var(--transicao-suave);
-    box-shadow: 0 4px 16px rgba(0, 255, 136, 0.35);
-}
-
-.btn-primary-block:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 255, 136, 0.5);
-}
-
-/* ========================================================== */
-/* 6. RESPONSIVIDADE E AJUSTE DOS ITENS FIXOS NO CELULAR      */
+/* 6. RESPONSIVIDADE TOTAL PARA CELULAR E TABLET              */
 /* ========================================================== */
 @media screen and (max-width: 850px) {
     body {
@@ -748,7 +668,7 @@ main {
     .dashboard-content > .card {
         width: 100% !important;
         grid-column: auto !important;
-        padding: 18px !important;
+        padding: 16px !important;
         border-radius: 16px !important;
     }
 
@@ -761,11 +681,20 @@ main {
         gap: 12px !important;
     }
 
+    .simulator-box input,
+    .simulator-box select,
+    .simulator-box button,
+    .simulator-box-col input,
+    .simulator-box-col select,
+    .simulator-box-col button {
+        width: 100% !important;
+    }
+
     .fixed-item {
         flex-direction: column !important;
         align-items: flex-start !important;
         gap: 12px !important;
-        padding: 16px !important;
+        padding: 14px !important;
     }
 
     .fixed-item > div:first-child {
@@ -775,7 +704,7 @@ main {
         gap: 6px;
     }
 
-    .fixed-item > div:last-child {
+    .fixed-item-actions {
         width: 100%;
         display: flex;
         justify-content: space-between;
@@ -790,10 +719,5 @@ main {
 
     .portfolio-value {
         font-size: 1.8rem;
-    }
-
-    .login-card {
-        padding: 28px 20px;
-        border-radius: 20px;
     }
 }
