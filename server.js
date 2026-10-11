@@ -196,7 +196,7 @@ app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir aporte." }); }
 });
 
-// Rotas Transações / Extrato & IA
+// Rotas Transações / Extrato & IA (Atualizado para 5 Categorias)
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -209,23 +209,34 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     const valorNum = parseFloat(valor);
     if (!descricao || isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
 
-    let categoriaIA = "Lazer";
+    let categoriaIA = "Compras";
     const descLower = descricao.toLowerCase();
-    if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('compra') || descLower.includes('feira')) {
+
+    // Filtros diretos por palavra-chave para máxima precisão
+    if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('feira') || descLower.includes('padaria') || descLower.includes('acougue')) {
         categoriaIA = 'Mercado';
-    } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta')) {
+    } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta') || descLower.includes('casa') || descLower.includes('agua') || descLower.includes('luz') || descLower.includes('internet') || descLower.includes('reforma') || descLower.includes('maquina de lavar') || descLower.includes('geladeira')) {
         categoriaIA = 'Casa';
+    } else if (descLower.includes('gasolina') || descLower.includes('combustivel') || descLower.includes('uber') || descLower.includes('99') || descLower.includes('taxi') || descLower.includes('onibus') || descLower.includes('estacionamento') || descLower.includes('pedagio')) {
+        categoriaIA = 'Transporte';
+    } else if (descLower.includes('acai') || descLower.includes('lanche') || descLower.includes('restaurante') || descLower.includes('cinema') || descLower.includes('pizza') || descLower.includes('cerveja')) {
+        categoriaIA = 'Lazer';
     } else {
         try {
-            const prompt = `Responda com APENAS UMA PALAVRA EXATA entre "Mercado", "Casa" ou "Lazer" para a compra: "${descricao}"`;
+            const prompt = `Responda com APENAS UMA PALAVRA EXATA entre "Mercado", "Casa", "Lazer", "Transporte" ou "Compras" para a compra: "${descricao}"`;
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
             if (response && response.text) {
-                const resp = response.text.trim().toLowerCase();
-                if (resp.includes('mercado')) categoriaIA = 'Mercado';
-                else if (resp.includes('casa')) categoriaIA = 'Casa';
-                else categoriaIA = 'Lazer';
+                const resp = response.text.trim();
+                const validas = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'];
+                if (validas.includes(resp)) {
+                    categoriaIA = resp;
+                } else {
+                    categoriaIA = 'Compras';
+                }
             }
-        } catch (e) { }
+        } catch (e) {
+            categoriaIA = 'Compras';
+        }
     }
 
     const dataHoje = new Date().toLocaleDateString('pt-BR');
@@ -278,7 +289,7 @@ app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
-// Rotas Ativos / Portfólio (Corrigidas e validadas)
+// Rotas Ativos / Portfólio
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1`, [req.usuario.id]);
