@@ -47,7 +47,8 @@ db.serialize(() => {
         usuario_id INTEGER,
         descricao TEXT,
         valor REAL,
-        vencimento TEXT
+        vencimento TEXT,
+        pago INTEGER DEFAULT 0
     )`);
 
     db.run(`CREATE TABLE IF NOT EXISTS ativos_portfolio (
@@ -63,6 +64,14 @@ db.serialize(() => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         usuario_id INTEGER,
         descricao TEXT,
+        valor REAL,
+        data TEXT
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS aportes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER,
+        mes TEXT,
         valor REAL,
         data TEXT
     )`);
@@ -153,6 +162,27 @@ app.delete('/api/entradas/:id', autenticarToken, (req, res) => {
     });
 });
 
+// Rotas de Aportes / Reserva
+app.get('/api/aportes', autenticarToken, (req, res) => {
+    db.all(`SELECT * FROM aportes WHERE usuario_id = ? ORDER BY id ASC`, [req.usuario.id], (err, rows) => {
+        if (err) return res.status(500).json({ erro: "Erro ao buscar aportes." });
+        res.json(rows);
+    });
+});
+
+app.post('/api/aportes', autenticarToken, (req, res) => {
+    const { mes, valor } = req.body;
+    const valNum = parseFloat(valor);
+    if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
+
+    const dataHoje = new Date().toLocaleDateString('pt-BR');
+    db.run(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES (?, ?, ?, ?)`, 
+        [req.usuario.id, mes, valNum, dataHoje], function(err) {
+            if (err) return res.status(500).json({ erro: "Erro ao salvar aporte." });
+            res.status(201).json({ id: this.lastID, mes, valor: valNum, data: dataHoje });
+    });
+});
+
 app.get('/api/extrato', autenticarToken, (req, res) => {
     db.all(`SELECT * FROM transacoes WHERE usuario_id = ? ORDER BY id DESC`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar extrato." });
@@ -168,7 +198,6 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     let categoriaIA = "Lazer";
     const descLower = descricao.toLowerCase();
 
-    // Regra direta prioritária
     if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('compra semanal') || descLower.includes('feira') || descLower.includes('açougue')) {
         categoriaIA = 'Mercado';
     } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta') || descLower.includes('construção') || descLower.includes('ferramenta')) {
@@ -211,7 +240,7 @@ app.delete('/api/transacao/:id', autenticarToken, (req, res) => {
 });
 
 app.get('/api/gastos-fixos', autenticarToken, (req, res) => {
-    db.all(`SELECT * FROM gastos_fixos WHERE usuario_id = ?`, [req.usuario.id], (err, rows) => {
+    db.all(`SELECT * FROM gastos_fixos WHERE usuario_id = ? AND (pago = 0 OR pago IS NULL)`, [req.usuario.id], (err, rows) => {
         if (err) return res.status(500).json({ erro: "Erro ao buscar gastos fixos." });
         res.json(rows);
     });
@@ -219,10 +248,24 @@ app.get('/api/gastos-fixos', autenticarToken, (req, res) => {
 
 app.post('/api/gastos-fixos', autenticarToken, (req, res) => {
     const { descricao, valor, vencimento } = req.body;
-    db.run(`INSERT INTO gastos_fixos (usuario_id, descricao, valor, vencimento) VALUES (?, ?, ?, ?)`,
+    db.run(`INSERT INTO gastos_fixos (usuario_id, descricao, valor, vencimento, pago) VALUES (?, ?, ?, ?, 0)`,
         [req.usuario.id, descricao, valor, vencimento], function(err) {
             if (err) return res.status(500).json({ erro: "Erro ao cadastrar conta fixa." });
             res.status(201).json({ id: this.lastID, descricao, valor, vencimento });
+    });
+});
+
+app.put('/api/gastos-fixos/:id/pago', autenticarToken, (req, res) => {
+    db.run(`UPDATE gastos_fixos SET pago = 1 WHERE id = ? AND usuario_id = ?`, [req.params.id, req.usuario.id], function(err) {
+        if (err) return res.status(500).json({ erro: "Erro ao dar baixa no pagamento." });
+        res.json({ mensagem: "Conta marcada como paga com sucesso!" });
+    });
+});
+
+app.delete('/api/gastos-fixos/:id', autenticarToken, (req, res) => {
+    db.run(`DELETE FROM gastos_fixos WHERE id = ? AND usuario_id = ?`, [req.params.id, req.usuario.id], function(err) {
+        if (err) return res.status(500).json({ erro: "Erro ao excluir gasto fixo." });
+        res.json({ mensagem: "Gasto fixo removido com sucesso." });
     });
 });
 

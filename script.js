@@ -7,6 +7,7 @@ let chartAsset = null;
 let chartPerformance = null;
 let chartBalanco = null;
 let valoresReaisOcultos = {};
+let totalAportesAcumulado = 0;
 
 window.addEventListener('DOMContentLoaded', () => {
     if (!token && !window.location.pathname.includes('login.html')) {
@@ -24,6 +25,7 @@ window.addEventListener('DOMContentLoaded', () => {
     carregarAtivosPortfolio();
     carregarGastosFixosBD();
     carregarEntradasBD();
+    carregarAportesBD(); // Carrega os aportes salvos no BD ao iniciar
 });
 
 function fazerLogout(e) {
@@ -71,7 +73,7 @@ function atualizarPatrimonioTotalAuto(totalCalculado) {
 }
 
 // ==========================================================
-// 1. GERENCIAMENTO DE ATIVOS E PORTFÓLIO
+// 1. GERENCIAMENTO DE ATIVOS E PORTFÓLIO (Cripto & Ações)
 // ==========================================================
 async function carregarAtivosPortfolio() {
     try {
@@ -80,7 +82,6 @@ async function carregarAtivosPortfolio() {
         });
         const listaAtivos = await res.json();
 
-        let totalReserva = 0;
         let totalCripto = 0;
         let totalAcoes = 0;
         let totalFiis = 0;
@@ -101,8 +102,6 @@ async function carregarAtivosPortfolio() {
                     }
                 } catch (e) { }
                 totalCripto += valorCalculado;
-            } else if (item.tipo === 'Reserva') {
-                totalReserva += valorCalculado;
             } else {
                 totalAcoes += valorCalculado;
             }
@@ -122,29 +121,12 @@ async function carregarAtivosPortfolio() {
         }
 
         if (chartAsset) {
-            chartAsset.data.datasets[0].data = [totalReserva, totalCripto, totalAcoes, totalFiis];
+            chartAsset.data.datasets[0].data = [totalAportesAcumulado, totalCripto, totalAcoes, totalFiis];
             chartAsset.update();
         }
 
-        const patrimonioGeral = totalReserva + totalCripto + totalAcoes + totalFiis;
+        const patrimonioGeral = totalAportesAcumulado + totalCripto + totalAcoes + totalFiis;
         atualizarPatrimonioTotalAuto(patrimonioGeral);
-
-        const metaTextoAtual = document.getElementById('metaTextDisplay');
-        if (metaTextoAtual) {
-            let metaDesejada = 10000;
-            const textoAtual = metaTextoAtual.innerText;
-            if (textoAtual.includes('/')) {
-                const partes = textoAtual.split('/');
-                if (partes[1]) {
-                    metaDesejada = parseFloat(partes[1].replace('R$', '').replace(/\./g, '').replace(',', '.')) || 10000;
-                }
-            }
-            const pct = Math.min(Math.round((totalReserva / metaDesejada) * 100), 100);
-            metaTextoAtual.innerText = `R$ ${totalReserva.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${metaDesejada.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct}%)`;
-
-            const barra = document.getElementById('metaProgressBar');
-            if (barra) barra.style.width = `${pct}%`;
-        }
 
     } catch (err) {
         console.log("Erro ao carregar ativos.");
@@ -169,7 +151,7 @@ async function adicionarAtivoPortfolio() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio: tipo === 'Reserva' ? 1 : precoUnitario })
+            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio: precoUnitario })
         });
 
         if (res.ok) {
@@ -398,18 +380,48 @@ async function carregarGastosFixosBD() {
         listContainer.innerHTML = '';
         let totalFixed = 0;
 
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+
         lista.forEach(item => {
             const v = parseFloat(item.valor) || 0;
             totalFixed += v;
+
+            let statusBadge = '<span class="status-badge" style="color: var(--verde-destaque); border-color: var(--borda-vidro);">🟢 Em Dia</span>';
+            
+            if (item.vencimento && item.vencimento.includes('/')) {
+                const partes = item.vencimento.split('/');
+                const dia = parseInt(partes[0]);
+                const mes = parseInt(partes[1]) - 1;
+                const anoAtual = hoje.getFullYear();
+
+                const dataVenc = new Date(anoAtual, mes, dia);
+                dataVenc.setHours(0, 0, 0, 0);
+
+                const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
+
+                if (diffDias < 0) {
+                    statusBadge = '<span class="status-badge" style="color: #ff6b6b; border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.1);">🔴 Vencido</span>';
+                } else if (diffDias <= 3) {
+                    statusBadge = '<span class="status-badge" style="color: #f1c40f; border-color: rgba(241,196,15,0.3); background: rgba(241,196,15,0.1);">🟡 A Vencer</span>';
+                }
+            }
 
             const div = document.createElement('div');
             div.className = 'fixed-item';
             div.innerHTML = `
                 <div>
-                    <strong>${item.descricao}</strong>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <strong>${item.descricao}</strong>
+                        ${statusBadge}
+                    </div>
                     <small>Vencimento: ${item.vencimento || 'Mensal'}</small>
                 </div>
-                <span class="fixed-amount privacy-target">R$ ${v.toFixed(2).replace('.', ',')}</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="fixed-amount privacy-target">R$ ${v.toFixed(2).replace('.', ',')}</span>
+                    <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;" title="Dar baixa como pago">✅ Pago</button>
+                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir conta">🗑️</button>
+                </div>
             `;
             listContainer.appendChild(div);
         });
@@ -422,6 +434,22 @@ async function carregarGastosFixosBD() {
         atualizarGraficoBalanco();
     } catch (e) {
         console.log("Erro ao carregar gastos fixos.");
+    }
+}
+
+async function marcarGastoComoPago(id) {
+    try {
+        const res = await fetch(`${API_URL}/gastos-fixos/${id}/pago`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            carregarGastosFixosBD();
+        } else {
+            alert("Erro ao dar baixa na conta.");
+        }
+    } catch (e) {
+        console.log("Erro de conexão ao marcar como pago.");
     }
 }
 
@@ -466,8 +494,24 @@ async function adicionarGastoFixo() {
     }
 }
 
+async function removerGastoFixo(id) {
+    try {
+        const res = await fetch(`${API_URL}/gastos-fixos/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            carregarGastosFixosBD();
+        } else {
+            alert("Erro ao remover gasto fixo.");
+        }
+    } catch (e) {
+        console.log("Erro ao conectar com o servidor.");
+    }
+}
+
 // ==========================================================
-// 5. APORTES MENSAIS E GRÁFICOS
+// 5. APORTES MENSAIS SALVOS NO BD, GRÁFICOS E ANÁLISE DE RISCO
 // ==========================================================
 function inicializarGraficos() {
     const pCanvas = document.getElementById('portfolioChart');
@@ -483,7 +527,7 @@ function inicializarGraficos() {
     if (aCanvas) {
         chartAsset = new Chart(aCanvas.getContext('2d'), {
             type: 'doughnut',
-            data: { labels: ['Reserva', 'Cripto', 'Ações', 'FIIs'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#00ff88', '#a7ffd5', '#00cc6a', '#1ebd58'] }] },
+            data: { labels: ['Reserva (Aportes)', 'Cripto', 'Ações', 'FIIs'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#00ff88', '#a7ffd5', '#00cc6a', '#1ebd58'] }] },
             options: { responsive: true, maintainAspectRatio: false }
         });
     }
@@ -507,6 +551,74 @@ function inicializarGraficos() {
     }
 }
 
+async function carregarAportesBD() {
+    try {
+        const res = await fetch(`${API_URL}/aportes`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const lista = await res.json();
+        
+        totalAportesAcumulado = 0;
+        if (chartPerformance) {
+            chartPerformance.data.labels = [];
+            chartPerformance.data.datasets[0].data = [];
+        }
+
+        lista.forEach(item => {
+            const v = parseFloat(item.valor) || 0;
+            totalAportesAcumulado += v;
+
+            if (chartPerformance) {
+                chartPerformance.data.labels.push(item.mes);
+                chartPerformance.data.datasets[0].data.push(v);
+            }
+        });
+
+        if (chartPerformance) chartPerformance.update();
+
+        salvarMetaReserva();
+        carregarAtivosPortfolio();
+        atualizarGraficoBalanco();
+    } catch (e) {
+        console.log("Erro ao carregar aportes do BD.");
+    }
+}
+
+async function adicionarAporteMes() {
+    const inputMes = document.getElementById('inputAporteMes');
+    const inputVal = document.getElementById('inputAporteVal');
+
+    const m = inputMes ? inputMes.value.trim() : '';
+    const v = parseFloat(inputVal ? inputVal.value.replace(',', '.') : 0);
+
+    if (!m || isNaN(v) || v <= 0) {
+        alert("Preencha o mês e o valor do aporte.");
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/aportes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ mes: m, valor: v })
+        });
+
+        if (res.ok) {
+            inputMes.value = '';
+            inputVal.value = '';
+            alternarFormulario('formAporte');
+            carregarAportesBD(); // Recarrega os aportes direto do banco de dados
+        } else {
+            alert("Erro ao salvar aporte no servidor.");
+        }
+    } catch (err) {
+        alert("Erro ao conectar com o servidor.");
+    }
+}
+
 function atualizarGraficoBalanco() {
     if (!chartBalanco) return;
     const totalEntradas = Array.from(document.querySelectorAll('#listaEntradasCadastradas .transaction-item span'))
@@ -518,10 +630,42 @@ function atualizarGraficoBalanco() {
     const totalVariaveis = Array.from(document.querySelectorAll('#transactionList .trans-amount'))
         .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('- R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
 
-    const totalSaidas = totalFixos + totalVariaveis;
+    const totalGastosConsumo = totalFixos + totalVariaveis;
+    const totalSaidasGeral = totalGastosConsumo + totalAportesAcumulado;
+    const saldoLivreReal = totalEntradas - totalSaidasGeral;
 
-    chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidas];
+    chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
+
+    const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : 0;
+    const barraGasto = document.getElementById('barraGastoProporcao');
+    const textoGasto = document.getElementById('textoPorcentagemGastos');
+    const badgeStatus = document.getElementById('badgeStatusGasto');
+    const alertaGastoTexto = document.getElementById('alertaGastoTexto');
+
+    if (barraGasto && textoGasto && badgeStatus) {
+        const larguraVisual = Math.min(Math.round(pctComprometido), 100);
+        barraGasto.style.width = `${larguraVisual}%`;
+        
+        textoGasto.innerHTML = `${pctComprometido.toFixed(1).replace('.', ',')}% comprometido | <span style="color: var(--verde-destaque);">Livre: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>`;
+
+        if (pctComprometido <= 70) {
+            barraGasto.style.backgroundColor = '#00ff88';
+            badgeStatus.innerText = '🟢 Saudável';
+            badgeStatus.style.color = '#00ff88';
+            if (alertaGastoTexto) alertaGastoTexto.innerText = `💡 Excelente! Você ainda tem R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} livres na conta após gastar e investir.`;
+        } else if (pctComprometido <= 90) {
+            barraGasto.style.backgroundColor = '#f1c40f';
+            badgeStatus.innerText = '🟡 Atenção';
+            badgeStatus.style.color = '#f1c40f';
+            if (alertaGastoTexto) alertaGastoTexto.innerText = `⚠️ Boa gestão de aportes, mas o saldo livre baixou para R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+        } else {
+            barraGasto.style.backgroundColor = '#ff6b6b';
+            badgeStatus.innerText = '🔴 Extremo';
+            badgeStatus.style.color = '#ff6b6b';
+            if (alertaGastoTexto) alertaGastoTexto.innerText = `🚨 ALERTA: O compromisso total atingiu ${pctComprometido.toFixed(1)}%. Saldo livre atual: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+        }
+    }
 }
 
 async function buscarCotacaoBitcoinAoVivo() {
@@ -541,57 +685,17 @@ function salvarPatrimonioInicial() {
 }
 
 function salvarMetaReserva() {
-    const t = parseFloat(document.getElementById('inputMetaTotal').value) || 1;
-    const a = parseFloat(document.getElementById('inputMetaAtual').value) || 0;
-    const pct = Math.min(Math.round((a / t) * 100), 100);
-    document.getElementById('metaTextDisplay').innerText = `R$ ${a.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${t.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct}%)`;
-    document.getElementById('metaProgressBar').style.width = `${pct}%`;
-    alternarFormulario('formMeta');
-}
-
-async function adicionarAporteMes() {
-    const inputMes = document.getElementById('inputAporteMes');
-    const inputVal = document.getElementById('inputAporteVal');
-
-    const m = inputMes ? inputMes.value.trim() : '';
-    const v = parseFloat(inputVal ? inputVal.value.replace(',', '.') : 0);
-
-    if (!m || isNaN(v) || v <= 0) {
-        alert("Preencha o mês e o valor do aporte.");
-        return;
-    }
-
-    if (chartPerformance) {
-        chartPerformance.data.labels.push(m);
-        chartPerformance.data.datasets[0].data.push(v);
-        chartPerformance.update();
-    }
-
-    const totalDisplay = document.getElementById('totalPortfolioDisplay');
-    if (totalDisplay) {
-        let atual = parseFloat(totalDisplay.innerText.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0;
-        atualizarPatrimonioTotalAuto(atual + v);
-    }
-
+    const t = parseFloat(document.getElementById('inputMetaTotal').value) || 10000;
     const metaTextoAtual = document.getElementById('metaTextDisplay');
+    
+    const pct = Math.min(Math.round((totalAportesAcumulado / t) * 100), 100);
     if (metaTextoAtual) {
-        let metaDesejada = 10000;
-        let reservaAtual = v;
-        const textoAtual = metaTextoAtual.innerText;
-        if (textoAtual.includes('/')) {
-            const partes = textoAtual.split('/');
-            if (partes[0]) reservaAtual += (parseFloat(partes[0].replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0);
-            if (partes[1]) metaDesejada = parseFloat(partes[1].replace('R$', '').replace(/\./g, '').replace(',', '.')) || 10000;
-        }
-        const pct = Math.min(Math.round((reservaAtual / metaDesejada) * 100), 100);
-        metaTextoAtual.innerText = `R$ ${reservaAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${metaDesejada.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct}%)`;
-        const barra = document.getElementById('metaProgressBar');
-        if (barra) barra.style.width = `${pct}%`;
+        metaTextoAtual.innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${t.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct}%)`;
     }
+    const barra = document.getElementById('metaProgressBar');
+    if (barra) barra.style.width = `${pct}%`;
 
-    inputMes.value = '';
-    inputVal.value = '';
-    alternarFormulario('formAporte');
+    alternarFormulario('formMeta');
 }
 
 // ==========================================================
@@ -607,7 +711,6 @@ async function gerarRelatorioPDF(e) {
         const nomeUsuario = localStorage.getItem('financia_user') || 'Usuário';
         let y = 20;
 
-        // Cabeçalho do PDF
         doc.setFillColor(11, 45, 33);
         doc.rect(0, 0, 210, 30, 'F');
         doc.setTextColor(0, 255, 136);
@@ -622,7 +725,6 @@ async function gerarRelatorioPDF(e) {
 
         y = 40;
 
-        // 1. Resumo do Patrimônio & Reserva
         const totalPatrimonio = document.getElementById('totalPortfolioDisplay')?.innerText || 'R$ 0,00';
         const metaReserva = document.getElementById('metaTextDisplay')?.innerText || 'R$ 0,00';
 
@@ -638,7 +740,6 @@ async function gerarRelatorioPDF(e) {
         doc.text(`Progresso Meta de Reserva: ${metaReserva}`, 14, y);
         y += 10;
 
-        // Função auxiliar para criar rotas com dados
         const buscarDados = async (endpoint) => {
             try {
                 const res = await fetch(`${API_URL}/${endpoint}`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -653,7 +754,6 @@ async function gerarRelatorioPDF(e) {
             buscarDados('ativos')
         ]);
 
-        // 2. Entradas & Receitas
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.text("2. ENTRADAS & SALÁRIOS", 14, y);
@@ -672,7 +772,6 @@ async function gerarRelatorioPDF(e) {
             y += 3;
         }
 
-        // 3. Gastos Variáveis (Open Finance)
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.text("3. GASTOS VARIÁVEIS (Simulador / Categorização IA)", 14, y);
@@ -692,7 +791,6 @@ async function gerarRelatorioPDF(e) {
             y += 3;
         }
 
-        // 4. Gastos Fixos
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.text("4. COMPROMISSOS FIXOS MENSAIS", 14, y);
@@ -712,7 +810,6 @@ async function gerarRelatorioPDF(e) {
             y += 3;
         }
 
-        // 5. Portfólio de Ativos
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.text("5. PORTFÓLIO DE ATIVOS & INVESTIMENTOS", 14, y);
@@ -732,7 +829,6 @@ async function gerarRelatorioPDF(e) {
             });
         }
 
-        // Rodapé do PDF
         const paginas = doc.internal.getNumberOfPages();
         for (let i = 1; i <= paginas; i++) {
             doc.setPage(i);

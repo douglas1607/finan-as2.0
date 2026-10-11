@@ -16,8 +16,13 @@
         <header class="dashboard-header">
             <div class="header-left">
                 <div class="logo">
-                    <span class="logo-icon">⚡</span>
-                    <h1>FinancIA Autônoma</h1>
+                    <div class="logo-icon-badge">
+                        <span>F.IA</span>
+                    </div>
+                    <div class="logo-text-group">
+                        <h1>Financ<span class="highlight-ia">IA</span></h1>
+                        <small class="subtext-autonoma">AUTÔNOMA</small>
+                    </div>
                 </div>
                 <nav class="header-nav">
                     <a href="#" class="nav-link active">Painel</a>
@@ -27,7 +32,8 @@
             </div>
 
             <div class="header-right">
-                <button class="btn-privacy" onclick="alternarModoPrivacidade()" title="Ocultar/Exibir Valores">👁️ Privado</button>
+                <button class="btn-privacy" onclick="alternarModoPrivacidade()" title="Ocultar/Exibir Valores">👁️
+                    Privado</button>
                 <div class="header-status">
                     <span class="pulse-dot"></span>
                     <span>IA CONECTADA</span>
@@ -45,7 +51,7 @@
                     <h2>Evolução do Patrimônio Total</h2>
                     <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir Saldo</button>
                 </div>
-                
+
                 <div id="formPatrimonio" class="simulator-box" style="display: none;">
                     <input type="number" id="inputNovoPatrimonio" placeholder="Valor do Patrimônio (R$)">
                     <button type="button" onclick="salvarPatrimonioInicial()">Salvar Saldo</button>
@@ -57,7 +63,7 @@
                 </div>
             </section>
 
-           <!-- Alocação de Ativos Dinâmica -->
+            <!-- Alocação de Ativos Dinâmica (Risco/Variável) -->
             <section class="card asset-allocation">
                 <div class="card-header-flex">
                     <h2>Alocação de Ativos</h2>
@@ -66,13 +72,13 @@
 
                 <div id="formAlocacao" class="simulator-box-col" style="display: none;">
                     <select id="inputTipoAtivo">
-                        <option value="Reserva">Reserva / Renda Fixa (R$)</option>
                         <option value="Cripto">Criptomoeda (Ex: bitcoin)</option>
                         <option value="Acoes">Ação / FII (Ex: MXRF11 ou PETR4)</option>
                     </select>
                     <input type="text" id="inputTickerAtivo" placeholder="Nome ou Ticker (ex: BTC, MXRF11)">
                     <input type="number" step="any" id="inputQtdAtivo" placeholder="Quantidade de cotas/unidades">
-                    <input type="number" step="any" id="inputPrecoUnitarioAtivo" placeholder="Preço pago por cota/unidade (R$)">
+                    <input type="number" step="any" id="inputPrecoUnitarioAtivo"
+                        placeholder="Preço pago por cota/unidade (R$)">
                     <button type="button" onclick="adicionarAtivoPortfolio()">Salvar Ativo no Portfólio</button>
                 </div>
 
@@ -139,18 +145,17 @@
             <section class="card revenue-progress">
                 <div class="card-header-flex">
                     <h2>Meta de Reserva</h2>
-                    <button class="btn-edit" onclick="alternarFormulario('formMeta')">⚙️ Configurar</button>
+                    <button class="btn-edit" onclick="alternarFormulario('formMeta')">⚙️ Configurar Meta</button>
                 </div>
 
                 <div id="formMeta" class="simulator-box-col" style="display: none;">
                     <input type="number" id="inputMetaTotal" placeholder="Meta Desejada (R$)">
-                    <input type="number" id="inputMetaAtual" placeholder="Valor Atual Salvo (R$)">
                     <button type="button" onclick="salvarMetaReserva()">Atualizar Meta</button>
                 </div>
 
                 <div class="meta-info">
-                    <span>Progresso Atual</span>
-                    <strong id="metaTextDisplay" class="privacy-target">R$ 0 / R$ 0 (0%)</strong>
+                    <span>Progresso da Reserva (Via Aportes)</span>
+                    <strong id="metaTextDisplay" class="privacy-target">R$ 0 / R$ 10.000 (0%)</strong>
                 </div>
                 <div class="progress-track">
                     <div class="progress-bar" id="metaProgressBar" style="width: 0%;"></div>
@@ -160,12 +165,12 @@
             <!-- Aportes Mensais -->
             <section class="card performance-overview">
                 <div class="card-header-flex">
-                    <h2>Aportes por Mês (R$)</h2>
+                    <h2>Aportes da Reserva por Mês (R$)</h2>
                     <button class="btn-edit" onclick="alternarFormulario('formAporte')">+ Registrar Aporte</button>
                 </div>
 
                 <div id="formAporte" class="simulator-box" style="display: none;">
-                    <input type="text" id="inputAporteMes" placeholder="Mês (Ex: Jan)">
+                    <input type="text" id="inputAporteMes" placeholder="Mês (Ex: Jan, Set)">
                     <input type="number" id="inputAporteVal" placeholder="Valor (R$)">
                     <button type="button" onclick="adicionarAporteMes()">Registrar Aporte</button>
                 </div>
@@ -189,18 +194,36 @@
                 <div class="transaction-list" id="listaEntradasCadastradas"></div>
                 <div class="fixed-total-box" style="margin-top: 10px;">
                     <span>Total Entradas:</span>
-                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$ 0,00</strong>
+                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$
+                        0,00</strong>
                 </div>
             </section>
 
-            <!-- Gráfico Comparativo Entradas vs Saídas -->
+            <!-- Gráfico Comparativo e Termômetro de Extremo de Gastos -->
             <section class="card" style="grid-column: span 6;">
                 <div class="card-header-flex">
                     <h2>Balanço: Entradas vs Saídas</h2>
-                    <span class="status-badge">📊 Análise %</span>
+                    <span class="status-badge" id="badgeStatusGasto">🟢 Saudável</span>
                 </div>
-                <div class="chart-container">
+                <div class="chart-container" style="height: 140px;">
                     <canvas id="balancoChart"></canvas>
+                </div>
+
+                <!-- Indicador Visual de Comprometimento Financeiro -->
+                <div class="termometro-box" style="margin-top: 15px;">
+                    <div class="meta-info" style="margin: 0 0 5px 0;">
+                        <span>Comprometimento do Orçamento:</span>
+                        <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-bar" id="barraGastoProporcao"
+                            style="width: 0%; background-color: var(--verde-destaque);"></div>
+                    </div>
+                    <small id="alertaGastoTexto"
+                        style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
+                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos
+                        e reserva.
+                    </small>
                 </div>
             </section>
 
