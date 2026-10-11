@@ -565,6 +565,9 @@ async function carregarAportesBD() {
             chartPerformance.data.datasets[0].data = [];
         }
 
+        const containerAportes = document.getElementById('listaAportesCadastrados');
+        if (containerAportes) containerAportes.innerHTML = '';
+
         lista.forEach(item => {
             const v = parseFloat(item.valor) || 0;
             totalAportesAcumulado += v;
@@ -572,6 +575,22 @@ async function carregarAportesBD() {
             if (chartPerformance) {
                 chartPerformance.data.labels.push(item.mes);
                 chartPerformance.data.datasets[0].data.push(v);
+            }
+
+            if (containerAportes) {
+                const div = document.createElement('div');
+                div.className = 'transaction-item';
+                div.innerHTML = `
+                    <div>
+                        <strong>${item.mes}</strong>
+                        <small>Aporte de Reserva</small>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">R$ ${v.toFixed(2).replace('.', ',')}</span>
+                        <button onclick="removerAporte(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir aporte">🗑️</button>
+                    </div>
+                `;
+                containerAportes.appendChild(div);
             }
         });
 
@@ -582,6 +601,22 @@ async function carregarAportesBD() {
         atualizarGraficoBalanco();
     } catch (e) {
         console.log("Erro ao carregar aportes do BD.");
+    }
+}
+
+async function removerAporte(id) {
+    try {
+        const res = await fetch(`${API_URL}/aportes/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            carregarAportesBD();
+        } else {
+            alert("Erro ao remover aporte.");
+        }
+    } catch (e) {
+        console.log("Erro ao conectar com o servidor.");
     }
 }
 
