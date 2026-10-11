@@ -196,7 +196,7 @@ app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir aporte." }); }
 });
 
-// Rotas Transações / Extrato & IA (Atualizado para 5 Categorias)
+// Rotas Transações / Extrato & IA (Categorização com Sistema Completo)
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -209,30 +209,46 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     const valorNum = parseFloat(valor);
     if (!descricao || isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
 
-    let categoriaIA = "Compras";
-    const descLower = descricao.toLowerCase();
+    const descNorm = descricao
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
 
-    // Filtros diretos por palavra-chave para máxima precisão
-    if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('feira') || descLower.includes('padaria') || descLower.includes('acougue')) {
-        categoriaIA = 'Mercado';
-    } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta') || descLower.includes('casa') || descLower.includes('agua') || descLower.includes('luz') || descLower.includes('internet') || descLower.includes('reforma') || descLower.includes('maquina de lavar') || descLower.includes('geladeira')) {
-        categoriaIA = 'Casa';
-    } else if (descLower.includes('gasolina') || descLower.includes('combustivel') || descLower.includes('uber') || descLower.includes('99') || descLower.includes('taxi') || descLower.includes('onibus') || descLower.includes('estacionamento') || descLower.includes('pedagio')) {
+    let categoriaIA = "";
+
+    // 1. Verificação instantânea por palavras-chave comuns
+    if (descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('etanol') || descNorm.includes('diesel') || descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('taxi') || descNorm.includes('pedagio') || descNorm.includes('estacionamento') || descNorm.includes('mecanico') || descNorm.includes('troca de oleo')) {
         categoriaIA = 'Transporte';
-    } else if (descLower.includes('acai') || descLower.includes('lanche') || descLower.includes('restaurante') || descLower.includes('cinema') || descLower.includes('pizza') || descLower.includes('cerveja')) {
+    } else if (descNorm.includes('acai') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('ifood') || descNorm.includes('pizza') || descNorm.includes('churrasco') || descNorm.includes('cerveja') || descNorm.includes('cinema') || descNorm.includes('sorvete') || descNorm.includes('sushi') || descNorm.includes('hamburguer')) {
         categoriaIA = 'Lazer';
-    } else {
+    } else if (descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('feira') || descNorm.includes('padaria') || descNorm.includes('acougue') || descNorm.includes('hortifruti') || descNorm.includes('sacolao')) {
+        categoriaIA = 'Mercado';
+    } else if (descNorm.includes('obra') || descNorm.includes('cimento') || descNorm.includes('telha') || descNorm.includes('tinta') || descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('maquina de lavar') || descNorm.includes('geladeira') || descNorm.includes('moveis')) {
+        categoriaIA = 'Casa';
+    } else if (descNorm.includes('roupa') || descNorm.includes('sapato') || descNorm.includes('tenis') || descNorm.includes('bicicleta') || descNorm.includes('celular') || descNorm.includes('camisa') || descNorm.includes('calca')) {
+        categoriaIA = 'Compras';
+    }
+
+    // 2. Se a palavra não bater nas regras rápidas, a IA assume com prompt ultra-detalhado
+    if (!categoriaIA) {
         try {
-            const prompt = `Responda com APENAS UMA PALAVRA EXATA entre "Mercado", "Casa", "Lazer", "Transporte" ou "Compras" para a compra: "${descricao}"`;
+            const prompt = `Sua função é classificar o gasto "${descricao}" EXATAMENTE em uma das 5 categorias abaixo:
+
+            - Mercado: Compras em supermercados, atacadões, padarias, feiras livre, açougues, hortifruti, mantimentos e comida para preparar em casa.
+            - Casa: Contas de água, luz, internet, gás, aluguel, condomínio, materiais de construção (cimento, tintas, reformas), eletrodomésticos, móveis, utilidades domésticas e ração de pets.
+            - Lazer: Alimentação fora de casa (restaurantes, açaí, iFood, lanches, pizzas, sushi, bares, cervejas), cinema, passeios, viagens, ingressos e assinaturas como Netflix/Spotify.
+            - Transporte: Combustíveis (gasolina, etanol, diesel), corridas (Uber, 99, táxi), manutenção de veículos, pneus, mecânico, pedágio, estacionamento e passagens de ônibus/metrô.
+            - Compras: Vestuário (roupas, sapatos, tênis, bijuterias), eletrônicos, celulares, computadores, bicicletas, presentes, itens de uso pessoal e compras diversas.
+
+            Responda APENAS com uma destas 5 palavras exatas sem explicações: Mercado, Casa, Lazer, Transporte ou Compras.`;
+
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
             if (response && response.text) {
                 const resp = response.text.trim();
                 const validas = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'];
-                if (validas.includes(resp)) {
-                    categoriaIA = resp;
-                } else {
-                    categoriaIA = 'Compras';
-                }
+                categoriaIA = validas.includes(resp) ? resp : 'Compras';
+            } else {
+                categoriaIA = 'Compras';
             }
         } catch (e) {
             categoriaIA = 'Compras';
@@ -241,7 +257,10 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
 
     const dataHoje = new Date().toLocaleDateString('pt-BR');
     try {
-        const result = await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [req.usuario.id, descricao, valorNum, categoriaIA, dataHoje]);
+        const result = await pool.query(
+            `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [req.usuario.id, descricao, valorNum, categoriaIA, dataHoje]
+        );
         res.status(201).json({ id: result.rows[0].id, descricao, valor: valorNum, categoria: categoriaIA, data: dataHoje });
     } catch (err) { res.status(500).json({ erro: "Erro ao salvar transação." }); }
 });
