@@ -698,7 +698,11 @@ function salvarMetaReserva() {
 // ==========================================================
 async function gerarRelatorioPDF(e) {
     if (e) e.preventDefault();
-    if (!window.jspdf) return alert("Biblioteca jsPDF não foi carregada no navegador.");
+    
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert("A biblioteca jsPDF não foi carregada corretamente.");
+        return;
+    }
 
     try {
         const { jsPDF } = window.jspdf;
@@ -756,12 +760,12 @@ async function gerarRelatorioPDF(e) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
 
-        if (entradas.length === 0) {
+        if (!entradas || entradas.length === 0) {
             doc.text("Nenhuma entrada cadastrada.", 14, y);
             y += 8;
         } else {
             entradas.forEach(item => {
-                doc.text(`• ${item.data} - ${item.descricao}: + R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
+                doc.text(`• ${item.data || ''} - ${item.descricao || ''}: + R$ ${parseFloat(item.valor || 0).toFixed(2)}`, 14, y);
                 y += 5;
             });
             y += 3;
@@ -774,12 +778,12 @@ async function gerarRelatorioPDF(e) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
 
-        if (transacoes.length === 0) {
+        if (!transacoes || transacoes.length === 0) {
             doc.text("Nenhum gasto variável cadastrado.", 14, y);
             y += 8;
         } else {
             transacoes.forEach(item => {
-                doc.text(`• ${item.data} - ${item.descricao} [${item.categoria}]: - R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
+                doc.text(`• ${item.data || ''} - ${item.descricao || ''} [${item.categoria || ''}]: - R$ ${parseFloat(item.valor || 0).toFixed(2)}`, 14, y);
                 y += 5;
                 if (y > 270) { doc.addPage(); y = 20; }
             });
@@ -793,12 +797,12 @@ async function gerarRelatorioPDF(e) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
 
-        if (fixos.length === 0) {
+        if (!fixos || fixos.length === 0) {
             doc.text("Nenhum gasto fixo cadastrado.", 14, y);
             y += 8;
         } else {
             fixos.forEach(item => {
-                doc.text(`• ${item.descricao} (Vencimento: ${item.vencimento}): R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
+                doc.text(`• ${item.descricao || ''} (Vencimento: ${item.vencimento || ''}): R$ ${parseFloat(item.valor || 0).toFixed(2)}`, 14, y);
                 y += 5;
                 if (y > 270) { doc.addPage(); y = 20; }
             });
@@ -812,13 +816,13 @@ async function gerarRelatorioPDF(e) {
         doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
 
-        if (ativos.length === 0) {
+        if (!ativos || ativos.length === 0) {
             doc.text("Nenhum ativo cadastrado no portfólio.", 14, y);
             y += 8;
         } else {
             ativos.forEach(item => {
-                const totalAtivo = item.quantidade * (item.preco_medio || 0);
-                doc.text(`• ${item.ticker} (${item.tipo}) - Qtd: ${item.quantidade} | Preço Médio: R$ ${(item.preco_medio || 0).toFixed(2)} | Total: R$ ${totalAtivo.toFixed(2)}`, 14, y);
+                const totalAtivo = Number(item.quantidade || 0) * Number(item.preco_medio || 0);
+                doc.text(`• ${item.ticker || ''} (${item.tipo || ''}) - Qtd: ${item.quantidade || 0} | Preço Médio: R$ ${Number(item.preco_medio || 0).toFixed(2)} | Total: R$ ${totalAtivo.toFixed(2)}`, 14, y);
                 y += 5;
                 if (y > 270) { doc.addPage(); y = 20; }
             });
@@ -835,6 +839,6 @@ async function gerarRelatorioPDF(e) {
         doc.save(`FinancIA_Extrato_Consolidado_${Date.now()}.pdf`);
     } catch (err) {
         console.error("Erro ao gerar PDF:", err);
-        alert("Erro ao compilar informações para o PDF.");
+        alert("Erro ao compilar informações para o PDF: " + err.message);
     }
 }
