@@ -214,6 +214,16 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     }
 });
 
+// Nova rota adicionada para excluir aportes
+app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
+    try {
+        await pool.query(`DELETE FROM aportes WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
+        res.json({ mensagem: "Aporte removido com sucesso." });
+    } catch (err) {
+        res.status(500).json({ erro: "Erro ao excluir aporte." });
+    }
+});
+
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
