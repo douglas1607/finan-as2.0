@@ -20,10 +20,9 @@ app.use(express.json());
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Conexão com o Banco de Dados PostgreSQL na Nuvem (Neon/Supabase/Render)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Necessário para bancos PostgreSQL em nuvem
+    ssl: { rejectUnauthorized: false }
 });
 
 pool.connect((err) => {
@@ -34,7 +33,6 @@ pool.connect((err) => {
     }
 });
 
-// Criação automática das tabelas em sintaxe PostgreSQL
 async function inicializarTabelas() {
     try {
         await pool.query(`
@@ -102,18 +100,14 @@ function autenticarToken(req, res, next) {
     });
 }
 
-// ------------------- ROTAS -------------------
-
+// Rotas de Autenticação
 app.post('/api/cadastrar', async (req, res) => {
     const { nome, email, senha } = req.body;
     if (!nome || !email || !senha) return res.status(400).json({ erro: "Preencha todos os campos." });
 
     try {
         const hashSenha = bcrypt.hashSync(senha, 8);
-        await pool.query(
-            `INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)`,
-            [nome, email, hashSenha]
-        );
+        await pool.query(`INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)`, [nome, email, hashSenha]);
         res.status(201).json({ mensagem: "Conta criada com sucesso!" });
     } catch (err) {
         res.status(400).json({ erro: "E-mail já cadastrado no sistema." });
@@ -125,11 +119,9 @@ app.post('/api/login', async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM usuarios WHERE email = $1`, [email]);
         const usuario = result.rows[0];
-
         if (!usuario || !bcrypt.compareSync(senha, usuario.senha)) {
             return res.status(400).json({ erro: "Usuário ou senha incorretos." });
         }
-
         const token = jwt.sign({ id: usuario.id, nome: usuario.nome }, SECRET_JWT, { expiresIn: '24h' });
         res.json({ token, nome: usuario.nome });
     } catch (err) {
@@ -144,7 +136,6 @@ app.post('/api/esqueci-senha', async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM usuarios WHERE email = $1`, [email]);
         if (result.rows.length === 0) return res.status(404).json({ erro: "E-mail não encontrado." });
-
         const hashSenha = bcrypt.hashSync(novaSenha, 8);
         await pool.query(`UPDATE usuarios SET senha = $1 WHERE email = $2`, [hashSenha, email]);
         res.json({ mensagem: "Senha alterada com sucesso!" });
@@ -153,84 +144,64 @@ app.post('/api/esqueci-senha', async (req, res) => {
     }
 });
 
+// Rotas Entradas
 app.get('/api/entradas', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM entradas WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao buscar entradas." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao buscar entradas." }); }
 });
 
 app.post('/api/entradas', autenticarToken, async (req, res) => {
     const { descricao, valor } = req.body;
     const valNum = parseFloat(valor);
     if (!descricao || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
-
     const dataHoje = new Date().toLocaleDateString('pt-BR');
     try {
-        const result = await pool.query(
-            `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`,
-            [req.usuario.id, descricao, valNum, dataHoje]
-        );
+        const result = await pool.query(`INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, descricao, valNum, dataHoje]);
         res.status(201).json({ id: result.rows[0].id, descricao, valor: valNum, data: dataHoje });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao salvar entrada." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao salvar entrada." }); }
 });
 
 app.delete('/api/entradas/:id', autenticarToken, async (req, res) => {
     try {
         await pool.query(`DELETE FROM entradas WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        res.json({ mensagem: "Entrada removida com sucesso." });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao excluir entrada." });
-    }
+        res.json({ mensagem: "Entrada removida." });
+    } catch (err) { res.status(500).json({ erro: "Erro ao excluir entrada." }); }
 });
 
+// Rotas Aportes
 app.get('/api/aportes', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM aportes WHERE usuario_id = $1 ORDER BY id ASC`, [req.usuario.id]);
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao buscar aportes." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao buscar aportes." }); }
 });
 
 app.post('/api/aportes', autenticarToken, async (req, res) => {
     const { mes, valor } = req.body;
     const valNum = parseFloat(valor);
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
-
     const dataHoje = new Date().toLocaleDateString('pt-BR');
     try {
-        const result = await pool.query(
-            `INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`,
-            [req.usuario.id, mes, valNum, dataHoje]
-        );
+        const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataHoje]);
         res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataHoje });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao salvar aporte." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao salvar aporte." }); }
 });
 
-// Nova rota adicionada para excluir aportes
 app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
     try {
         await pool.query(`DELETE FROM aportes WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        res.json({ mensagem: "Aporte removido com sucesso." });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao excluir aporte." });
-    }
+        res.json({ mensagem: "Aporte removido." });
+    } catch (err) { res.status(500).json({ erro: "Erro ao excluir aporte." }); }
 });
 
+// Rotas Transações / Extrato & IA
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao buscar extrato." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao buscar extrato." }); }
 });
 
 app.post('/api/transacao', autenticarToken, async (req, res) => {
@@ -240,135 +211,107 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
 
     let categoriaIA = "Lazer";
     const descLower = descricao.toLowerCase();
-
-    if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('compra semanal') || descLower.includes('feira') || descLower.includes('açougue')) {
+    if (descLower.includes('mercado') || descLower.includes('supermercado') || descLower.includes('compra') || descLower.includes('feira')) {
         categoriaIA = 'Mercado';
-    } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta') || descLower.includes('construção') || descLower.includes('ferramenta')) {
+    } else if (descLower.includes('obra') || descLower.includes('cimento') || descLower.includes('telha') || descLower.includes('tinta')) {
         categoriaIA = 'Casa';
     } else {
         try {
-            const prompt = `Responda com APENAS UMA PALAVRA EXATA entre "Mercado", "Casa" ou "Lazer".
-- Se for supermercado, feira, alimentos, compras de casa de alimento, responda: Mercado
-- Se for material de construção, reforma, obra, reparo de casa, responda: Casa
-- Se for passeio, cinema, restaurante, bar, jogo, streaming, responda: Lazer
-
-Compra: "${descricao}"`;
+            const prompt = `Responda com APENAS UMA PALAVRA EXATA entre "Mercado", "Casa" ou "Lazer" para a compra: "${descricao}"`;
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
             if (response && response.text) {
                 const resp = response.text.trim().toLowerCase();
                 if (resp.includes('mercado')) categoriaIA = 'Mercado';
                 else if (resp.includes('casa')) categoriaIA = 'Casa';
-                else if (resp.includes('lazer')) categoriaIA = 'Lazer';
+                else categoriaIA = 'Lazer';
             }
-        } catch (e) {
-            console.error("Modo offline / erro na IA");
-        }
+        } catch (e) { }
     }
 
     const dataHoje = new Date().toLocaleDateString('pt-BR');
     try {
-        const result = await pool.query(
-            `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [req.usuario.id, descricao, valorNum, categoriaIA, dataHoje]
-        );
+        const result = await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [req.usuario.id, descricao, valorNum, categoriaIA, dataHoje]);
         res.status(201).json({ id: result.rows[0].id, descricao, valor: valorNum, categoria: categoriaIA, data: dataHoje });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao salvar transação." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao salvar transação." }); }
 });
 
 app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     try {
         await pool.query(`DELETE FROM transacoes WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        res.json({ mensagem: "Transação removida com sucesso." });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao excluir transação." });
-    }
+        res.json({ mensagem: "Transação removida." });
+    } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
+// Rotas Gastos Fixos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM gastos_fixos WHERE usuario_id = $1 AND (pago = 0 OR pago IS NULL)`, [req.usuario.id]);
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao buscar gastos fixos." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao buscar gastos fixos." }); }
 });
 
 app.post('/api/gastos-fixos', autenticarToken, async (req, res) => {
     const { descricao, valor, vencimento } = req.body;
     try {
-        const result = await pool.query(
-            `INSERT INTO gastos_fixos (usuario_id, descricao, valor, vencimento, pago) VALUES ($1, $2, $3, $4, 0) RETURNING id`,
-            [req.usuario.id, descricao, valor, vencimento]
-        );
+        const result = await pool.query(`INSERT INTO gastos_fixos (usuario_id, descricao, valor, vencimento, pago) VALUES ($1, $2, $3, $4, 0) RETURNING id`, [req.usuario.id, descricao, valor, vencimento]);
         res.status(201).json({ id: result.rows[0].id, descricao, valor, vencimento });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao cadastrar conta fixa." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao cadastrar conta fixa." }); }
 });
 
 app.put('/api/gastos-fixos/:id/pago', autenticarToken, async (req, res) => {
-    const gastoId = req.params.id;
-    const usuarioId = req.usuario.id;
-
     try {
-        const busca = await pool.query(`SELECT * FROM gastos_fixos WHERE id = $1 AND usuario_id = $2`, [gastoId, usuarioId]);
+        const busca = await pool.query(`SELECT * FROM gastos_fixos WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
         const conta = busca.rows[0];
-        if (!conta) return res.status(404).json({ erro: "Conta fixa não encontrada." });
+        if (!conta) return res.status(404).json({ erro: "Conta não encontrada." });
 
-        await pool.query(`UPDATE gastos_fixos SET pago = 1 WHERE id = $1 AND usuario_id = $2`, [gastoId, usuarioId]);
-
+        await pool.query(`UPDATE gastos_fixos SET pago = 1 WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
         const dataHoje = new Date().toLocaleDateString('pt-BR');
-        await pool.query(
-            `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-            [usuarioId, `[PAGO] ${conta.descricao}`, conta.valor, 'Casa', dataHoje]
-        );
-
-        res.json({ mensagem: "Pagamento registrado e abatido com sucesso!" });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao dar baixa na conta." });
-    }
+        await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`, [req.usuario.id, `[PAGO] ${conta.descricao}`, conta.valor, 'Casa', dataHoje]);
+        res.json({ mensagem: "Pagamento registrado!" });
+    } catch (err) { res.status(500).json({ erro: "Erro ao dar baixa." }); }
 });
 
 app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     try {
         await pool.query(`DELETE FROM gastos_fixos WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        res.json({ mensagem: "Gasto fixo removido com sucesso." });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao excluir gasto fixo." });
-    }
+        res.json({ mensagem: "Gasto fixo removido." });
+    } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
+// Rotas Ativos / Portfólio (Corrigidas e validadas)
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1`, [req.usuario.id]);
         res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao buscar ativos." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao buscar ativos." }); }
 });
 
 app.post('/api/ativos', autenticarToken, async (req, res) => {
     const { tipo, ticker, quantidade, preco_medio } = req.body;
+    const qtdNum = parseFloat(quantidade);
+    const precoNum = parseFloat(preco_medio);
+
+    if (!ticker || isNaN(qtdNum) || qtdNum <= 0 || isNaN(precoNum) || precoNum < 0) {
+        return res.status(400).json({ erro: "Dados do ativo inválidos." });
+    }
+
     try {
         const result = await pool.query(
             `INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [req.usuario.id, tipo, ticker.toUpperCase(), quantidade, preco_medio]
+            [req.usuario.id, tipo || 'Acoes', ticker.toUpperCase().trim(), qtdNum, precoNum]
         );
-        res.status(201).json({ id: result.rows[0].id });
+        res.status(201).json({ id: result.rows[0].id, mensagem: "Ativo cadastrado com sucesso!" });
     } catch (err) {
-        res.status(500).json({ erro: "Erro ao cadastrar ativo." });
+        console.error("Erro ao cadastrar ativo:", err);
+        res.status(500).json({ erro: "Erro ao cadastrar ativo no banco de dados." });
     }
 });
 
 app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
     try {
         await pool.query(`DELETE FROM ativos_portfolio WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        res.json({ mensagem: "Ativo removido com sucesso." });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao excluir ativo." });
-    }
+        res.json({ mensagem: "Ativo removido." });
+    } catch (err) { res.status(500).json({ erro: "Erro ao excluir ativo." }); }
 });
 
 app.listen(PORT, () => {

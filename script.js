@@ -90,7 +90,7 @@ async function carregarAtivosPortfolio() {
         if (container) container.innerHTML = '';
 
         for (let item of listaAtivos) {
-            let valorCalculado = item.quantidade * (item.preco_medio || 0);
+            let valorCalculado = Number(item.quantidade) * Number(item.preco_medio || 0);
 
             if (item.tipo === 'Cripto') {
                 try {
@@ -98,7 +98,7 @@ async function carregarAtivosPortfolio() {
                     const dadosCripto = await reqBtc.json();
                     const precoAtual = dadosCripto[item.ticker.toLowerCase()]?.brl;
                     if (precoAtual) {
-                        valorCalculado = item.quantidade * precoAtual;
+                        valorCalculado = Number(item.quantidade) * precoAtual;
                     }
                 } catch (e) { }
                 totalCripto += valorCalculado;
@@ -112,7 +112,7 @@ async function carregarAtivosPortfolio() {
                 div.innerHTML = `
                     <div>
                         <strong>${item.ticker} (${item.tipo})</strong>
-                        <small>Qtd: ${item.quantidade} • Preço Médio: R$ ${(item.preco_medio || 0).toFixed(2)} • Total: R$ ${valorCalculado.toFixed(2)}</small>
+                        <small>Qtd: ${item.quantidade} • Preço Médio: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
                     <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir ativo">🗑️</button>
                 `;
@@ -134,12 +134,17 @@ async function carregarAtivosPortfolio() {
 }
 
 async function adicionarAtivoPortfolio() {
-    const tipo = document.getElementById('inputTipoAtivo').value;
-    const ticker = document.getElementById('inputTickerAtivo').value.trim();
-    const quantidade = parseFloat(document.getElementById('inputQtdAtivo').value);
-    const precoUnitario = parseFloat(document.getElementById('inputPrecoUnitarioAtivo').value);
+    const tipoSelect = document.getElementById('inputTipoAtivo');
+    const tickerInput = document.getElementById('inputTickerAtivo');
+    const qtdInput = document.getElementById('inputQtdAtivo');
+    const precoInput = document.getElementById('inputPrecoUnitarioAtivo');
 
-    if (!ticker || isNaN(quantidade) || quantidade <= 0 || isNaN(precoUnitario) || precoUnitario < 0) {
+    const tipo = tipoSelect ? tipoSelect.value : 'Acoes';
+    const ticker = tickerInput ? tickerInput.value.trim() : '';
+    const quantidade = parseFloat(qtdInput ? qtdInput.value.replace(',', '.') : 0);
+    const preco_medio = parseFloat(precoInput ? precoInput.value.replace(',', '.') : 0);
+
+    if (!ticker || isNaN(quantidade) || quantidade <= 0 || isNaN(preco_medio) || preco_medio < 0) {
         alert("Preencha o ticker, a quantidade e o preço unitário válidos.");
         return;
     }
@@ -151,18 +156,21 @@ async function adicionarAtivoPortfolio() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio: precoUnitario })
+            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio })
         });
 
         if (res.ok) {
-            document.getElementById('inputTickerAtivo').value = '';
-            document.getElementById('inputQtdAtivo').value = '';
-            document.getElementById('inputPrecoUnitarioAtivo').value = '';
+            tickerInput.value = '';
+            qtdInput.value = '';
+            precoInput.value = '';
             alternarFormulario('formAlocacao');
             carregarAtivosPortfolio();
+        } else {
+            const errData = await res.json();
+            alert(errData.erro || "Erro ao salvar ativo.");
         }
     } catch (err) {
-        alert("Erro ao salvar ativo.");
+        alert("Erro ao conectar com o servidor.");
     }
 }
 
@@ -214,9 +222,7 @@ async function carregarEntradasBD() {
         if (display) display.innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
         atualizarGraficoBalanco();
-    } catch (e) {
-        console.log("Erro ao carregar entradas.");
-    }
+    } catch (e) { }
 }
 
 async function adicionarEntrada() {
@@ -246,9 +252,7 @@ async function adicionarEntrada() {
             valInput.value = '';
             carregarEntradasBD();
         }
-    } catch (err) {
-        alert("Erro ao salvar entrada.");
-    }
+    } catch (err) { }
 }
 
 async function removerEntrada(id) {
@@ -257,14 +261,8 @@ async function removerEntrada(id) {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) {
-            carregarEntradasBD();
-        } else {
-            alert("Erro ao remover entrada.");
-        }
-    } catch (e) {
-        console.log("Erro ao conectar com o servidor.");
-    }
+        if (res.ok) carregarEntradasBD();
+    } catch (e) { }
 }
 
 // ==========================================================
@@ -309,9 +307,7 @@ async function carregarDadosDoBD() {
         document.getElementById('catLazerDisplay').innerText = `R$ ${tLazer.toFixed(2).replace('.', ',')}`;
         
         atualizarGraficoBalanco();
-    } catch (e) {
-        console.log("Erro ao carregar extrato.");
-    }
+    } catch (e) { }
 }
 
 async function adicionarGastoSimulado(e) {
@@ -341,12 +337,8 @@ async function adicionarGastoSimulado(e) {
             descInput.value = '';
             valInput.value = '';
             carregarDadosDoBD();
-        } else {
-            alert("Erro ao categorizar transação.");
         }
-    } catch (err) {
-        alert("Servidor backend indisponível.");
-    }
+    } catch (err) { }
 }
 
 async function removerTransacaoExtrato(id) {
@@ -355,14 +347,8 @@ async function removerTransacaoExtrato(id) {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) {
-            carregarDadosDoBD();
-        } else {
-            alert("Erro ao remover transação.");
-        }
-    } catch (e) {
-        console.log("Erro ao conectar com o servidor.");
-    }
+        if (res.ok) carregarDadosDoBD();
+    } catch (e) { }
 }
 
 // ==========================================================
@@ -380,47 +366,21 @@ async function carregarGastosFixosBD() {
         listContainer.innerHTML = '';
         let totalFixed = 0;
 
-        const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0);
-
         lista.forEach(item => {
             const v = parseFloat(item.valor) || 0;
             totalFixed += v;
-
-            let statusBadge = '<span class="status-badge" style="color: var(--verde-destaque); border-color: var(--borda-vidro);">🟢 Em Dia</span>';
-            
-            if (item.vencimento && item.vencimento.includes('/')) {
-                const partes = item.vencimento.split('/');
-                const dia = parseInt(partes[0]);
-                const mes = parseInt(partes[1]) - 1;
-                const anoAtual = hoje.getFullYear();
-
-                const dataVenc = new Date(anoAtual, mes, dia);
-                dataVenc.setHours(0, 0, 0, 0);
-
-                const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
-
-                if (diffDias < 0) {
-                    statusBadge = '<span class="status-badge" style="color: #ff6b6b; border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.1);">🔴 Vencido</span>';
-                } else if (diffDias <= 3) {
-                    statusBadge = '<span class="status-badge" style="color: #f1c40f; border-color: rgba(241,196,15,0.3); background: rgba(241,196,15,0.1);">🟡 A Vencer</span>';
-                }
-            }
 
             const div = document.createElement('div');
             div.className = 'fixed-item';
             div.innerHTML = `
                 <div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <strong>${item.descricao}</strong>
-                        ${statusBadge}
-                    </div>
+                    <strong>${item.descricao}</strong>
                     <small>Vencimento: ${item.vencimento || 'Mensal'}</small>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="fixed-amount privacy-target">R$ ${v.toFixed(2).replace('.', ',')}</span>
-                    <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;" title="Dar baixa como pago">✅ Pago</button>
-                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir conta">🗑️</button>
+                    <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;">✅ Pago</button>
+                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;">🗑️</button>
                 </div>
             `;
             listContainer.appendChild(div);
@@ -432,9 +392,7 @@ async function carregarGastosFixosBD() {
         }
         
         atualizarGraficoBalanco();
-    } catch (e) {
-        console.log("Erro ao carregar gastos fixos.");
-    }
+    } catch (e) { }
 }
 
 async function marcarGastoComoPago(id) {
@@ -445,13 +403,9 @@ async function marcarGastoComoPago(id) {
         });
         if (res.ok) {
             carregarGastosFixosBD();
-            carregarDadosDoBD(); // Atualiza o extrato e desconta automaticamente das entradas disponíveis
-        } else {
-            alert("Erro ao dar baixa na conta.");
+            carregarDadosDoBD();
         }
-    } catch (e) {
-        console.log("Erro de conexão ao marcar como pago.");
-    }
+    } catch (e) { }
 }
 
 async function adicionarGastoFixo() {
@@ -464,7 +418,7 @@ async function adicionarGastoFixo() {
     const date = dateInput ? dateInput.value : '';
 
     if (!desc || !val || isNaN(parseFloat(val))) {
-        alert("Preencha a descrição e o valor da conta fixa.");
+        alert("Preencha a descrição e o valor.");
         return;
     }
 
@@ -490,9 +444,7 @@ async function adicionarGastoFixo() {
             if (dateInput) dateInput.value = '';
             carregarGastosFixosBD();
         }
-    } catch (err) {
-        alert("Erro ao salvar gasto fixo.");
-    }
+    } catch (err) { }
 }
 
 async function removerGastoFixo(id) {
@@ -501,18 +453,12 @@ async function removerGastoFixo(id) {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) {
-            carregarGastosFixosBD();
-        } else {
-            alert("Erro ao remover gasto fixo.");
-        }
-    } catch (e) {
-        console.log("Erro ao conectar com o servidor.");
-    }
+        if (res.ok) carregarGastosFixosBD();
+    } catch (e) { }
 }
 
 // ==========================================================
-// 5. APORTES MENSAIS SALVOS NO BD, GRÁFICOS E ANÁLISE DE RISCO
+// 5. APORTES MENSAIS E GRÁFICOS
 // ==========================================================
 function inicializarGraficos() {
     const pCanvas = document.getElementById('portfolioChart');
@@ -595,13 +541,10 @@ async function carregarAportesBD() {
         });
 
         if (chartPerformance) chartPerformance.update();
-
         salvarMetaReserva();
         carregarAtivosPortfolio();
         atualizarGraficoBalanco();
-    } catch (e) {
-        console.log("Erro ao carregar aportes do BD.");
-    }
+    } catch (e) { }
 }
 
 async function removerAporte(id) {
@@ -610,14 +553,8 @@ async function removerAporte(id) {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) {
-            carregarAportesBD();
-        } else {
-            alert("Erro ao remover aporte.");
-        }
-    } catch (e) {
-        console.log("Erro ao conectar com o servidor.");
-    }
+        if (res.ok) carregarAportesBD();
+    } catch (e) { }
 }
 
 async function adicionarAporteMes() {
@@ -647,12 +584,8 @@ async function adicionarAporteMes() {
             inputVal.value = '';
             alternarFormulario('formAporte');
             carregarAportesBD();
-        } else {
-            alert("Erro ao salvar aporte no servidor.");
         }
-    } catch (err) {
-        alert("Erro ao conectar com o servidor.");
-    }
+    } catch (err) { }
 }
 
 function atualizarGraficoBalanco() {
@@ -672,36 +605,6 @@ function atualizarGraficoBalanco() {
 
     chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
-
-    const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : 0;
-    const barraGasto = document.getElementById('barraGastoProporcao');
-    const textoGasto = document.getElementById('textoPorcentagemGastos');
-    const badgeStatus = document.getElementById('badgeStatusGasto');
-    const alertaGastoTexto = document.getElementById('alertaGastoTexto');
-
-    if (barraGasto && textoGasto && badgeStatus) {
-        const larguraVisual = Math.min(Math.round(pctComprometido), 100);
-        barraGasto.style.width = `${larguraVisual}%`;
-        
-        textoGasto.innerHTML = `${pctComprometido.toFixed(1).replace('.', ',')}% comprometido | <span style="color: var(--verde-destaque);">Livre: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>`;
-
-        if (pctComprometido <= 70) {
-            barraGasto.style.backgroundColor = '#00ff88';
-            badgeStatus.innerText = '🟢 Saudável';
-            badgeStatus.style.color = '#00ff88';
-            if (alertaGastoTexto) alertaGastoTexto.innerText = `💡 Excelente! Você ainda tem R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} livres na conta após gastar e investir.`;
-        } else if (pctComprometido <= 90) {
-            barraGasto.style.backgroundColor = '#f1c40f';
-            badgeStatus.innerText = '🟡 Atenção';
-            badgeStatus.style.color = '#f1c40f';
-            if (alertaGastoTexto) alertaGastoTexto.innerText = `⚠️ Boa gestão de aportes, mas o saldo livre baixou para R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
-        } else {
-            barraGasto.style.backgroundColor = '#ff6b6b';
-            badgeStatus.innerText = '🔴 Extremo';
-            badgeStatus.style.color = '#ff6b6b';
-            if (alertaGastoTexto) alertaGastoTexto.innerText = `🚨 ALERTA: O compromisso total atingiu ${pctComprometido.toFixed(1)}%. Saldo livre atual: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
-        }
-    }
 }
 
 async function buscarCotacaoBitcoinAoVivo() {
@@ -723,159 +626,11 @@ function salvarPatrimonioInicial() {
 function salvarMetaReserva() {
     const t = parseFloat(document.getElementById('inputMetaTotal').value) || 10000;
     const metaTextoAtual = document.getElementById('metaTextDisplay');
-    
     const pct = Math.min(Math.round((totalAportesAcumulado / t) * 100), 100);
     if (metaTextoAtual) {
         metaTextoAtual.innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${t.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct}%)`;
     }
     const barra = document.getElementById('metaProgressBar');
     if (barra) barra.style.width = `${pct}%`;
-
     alternarFormulario('formMeta');
-}
-
-// ==========================================================
-// 6. GERAÇÃO COMPLETA DE EXTRATO FINANCEIRO EM PDF
-// ==========================================================
-async function gerarRelatorioPDF(e) {
-    if (e) e.preventDefault();
-    if (!window.jspdf) return alert("Biblioteca jsPDF não foi carregada no navegador.");
-
-    try {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        const nomeUsuario = localStorage.getItem('financia_user') || 'Usuário';
-        let y = 20;
-
-        doc.setFillColor(11, 45, 33);
-        doc.rect(0, 0, 210, 30, 'F');
-        doc.setTextColor(0, 255, 136);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(18);
-        doc.text("FINANCIA AUTÔNOMA", 14, 18);
-        
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Relatório Consolidado • Usuário: ${nomeUsuario} • Data: ${new Date().toLocaleDateString('pt-BR')}`, 14, 25);
-
-        y = 40;
-
-        const totalPatrimonio = document.getElementById('totalPortfolioDisplay')?.innerText || 'R$ 0,00';
-        const metaReserva = document.getElementById('metaTextDisplay')?.innerText || 'R$ 0,00';
-
-        doc.setTextColor(5, 28, 20);
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "bold");
-        doc.text("1. RESUMO GERAL", 14, y);
-        y += 6;
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Patrimônio Total Calculado: ${totalPatrimonio}`, 14, y);
-        y += 5;
-        doc.text(`Progresso Meta de Reserva: ${metaReserva}`, 14, y);
-        y += 10;
-
-        const buscarDados = async (endpoint) => {
-            try {
-                const res = await fetch(`${API_URL}/${endpoint}`, { headers: { 'Authorization': `Bearer ${token}` } });
-                return res.ok ? await res.json() : [];
-            } catch { return []; }
-        };
-
-        const [entradas, transacoes, fixos, ativos] = await Promise.all([
-            buscarDados('entradas'),
-            buscarDados('extrato'),
-            buscarDados('gastos-fixos'),
-            buscarDados('ativos')
-        ]);
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("2. ENTRADAS & SALÁRIOS", 14, y);
-        y += 6;
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-
-        if (entradas.length === 0) {
-            doc.text("Nenhuma entrada cadastrada.", 14, y);
-            y += 8;
-        } else {
-            entradas.forEach(item => {
-                doc.text(`• ${item.data} - ${item.descricao}: + R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
-                y += 5;
-            });
-            y += 3;
-        }
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("3. GASTOS VARIÁVEIS (Simulador / Categorização IA)", 14, y);
-        y += 6;
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-
-        if (transacoes.length === 0) {
-            doc.text("Nenhum gasto variável cadastrado.", 14, y);
-            y += 8;
-        } else {
-            transacoes.forEach(item => {
-                doc.text(`• ${item.data} - ${item.descricao} [${item.categoria}]: - R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
-                y += 5;
-                if (y > 270) { doc.addPage(); y = 20; }
-            });
-            y += 3;
-        }
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("4. COMPROMISSOS FIXOS MENSAIS", 14, y);
-        y += 6;
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-
-        if (fixos.length === 0) {
-            doc.text("Nenhum gasto fixo cadastrado.", 14, y);
-            y += 8;
-        } else {
-            fixos.forEach(item => {
-                doc.text(`• ${item.descricao} (Vencimento: ${item.vencimento}): R$ ${parseFloat(item.valor).toFixed(2)}`, 14, y);
-                y += 5;
-                if (y > 270) { doc.addPage(); y = 20; }
-            });
-            y += 3;
-        }
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(12);
-        doc.text("5. PORTFÓLIO DE ATIVOS & INVESTIMENTOS", 14, y);
-        y += 6;
-        doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
-
-        if (ativos.length === 0) {
-            doc.text("Nenhum ativo cadastrado no portfólio.", 14, y);
-            y += 8;
-        } else {
-            ativos.forEach(item => {
-                const totalAtivo = item.quantidade * (item.preco_medio || 0);
-                doc.text(`• ${item.ticker} (${item.tipo}) - Qtd: ${item.quantidade} | Preço Médio: R$ ${(item.preco_medio || 0).toFixed(2)} | Total: R$ ${totalAtivo.toFixed(2)}`, 14, y);
-                y += 5;
-                if (y > 270) { doc.addPage(); y = 20; }
-            });
-        }
-
-        const paginas = doc.internal.getNumberOfPages();
-        for (let i = 1; i <= paginas; i++) {
-            doc.setPage(i);
-            doc.setFontSize(8);
-            doc.setTextColor(150, 150, 150);
-            doc.text(`FinancIA Autônoma - Documento gerado automaticamente • Página ${i} de ${paginas}`, 14, 288);
-        }
-
-        doc.save(`FinancIA_Extrato_Consolidado_${Date.now()}.pdf`);
-    } catch (err) {
-        console.error("Erro ao gerar PDF:", err);
-        alert("Erro ao compilar informações para o PDF.");
-    }
 }
