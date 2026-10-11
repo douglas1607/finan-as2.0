@@ -366,21 +366,47 @@ async function carregarGastosFixosBD() {
         listContainer.innerHTML = '';
         let totalFixed = 0;
 
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+
         lista.forEach(item => {
             const v = parseFloat(item.valor) || 0;
             totalFixed += v;
+
+            let statusBadge = '<span class="status-badge" style="color: var(--verde-destaque); border-color: var(--borda-vidro);">🟢 Em Dia</span>';
+            
+            if (item.vencimento && item.vencimento.includes('/')) {
+                const partes = item.vencimento.split('/');
+                const dia = parseInt(partes[0]);
+                const mes = parseInt(partes[1]) - 1;
+                const anoAtual = hoje.getFullYear();
+
+                const dataVenc = new Date(anoAtual, mes, dia);
+                dataVenc.setHours(0, 0, 0, 0);
+
+                const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
+
+                if (diffDias < 0) {
+                    statusBadge = '<span class="status-badge" style="color: #ff6b6b; border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.1);">🔴 Vencido</span>';
+                } else if (diffDias <= 3) {
+                    statusBadge = '<span class="status-badge" style="color: #f1c40f; border-color: rgba(241,196,15,0.3); background: rgba(241,196,15,0.1);">🟡 A Vencer</span>';
+                }
+            }
 
             const div = document.createElement('div');
             div.className = 'fixed-item';
             div.innerHTML = `
                 <div>
-                    <strong>${item.descricao}</strong>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <strong>${item.descricao}</strong>
+                        ${statusBadge}
+                    </div>
                     <small>Vencimento: ${item.vencimento || 'Mensal'}</small>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="fixed-amount privacy-target">R$ ${v.toFixed(2).replace('.', ',')}</span>
-                    <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;">✅ Pago</button>
-                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;">🗑️</button>
+                    <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;" title="Dar baixa como pago">✅ Pago</button>
+                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir conta">🗑️</button>
                 </div>
             `;
             listContainer.appendChild(div);
@@ -392,7 +418,9 @@ async function carregarGastosFixosBD() {
         }
         
         atualizarGraficoBalanco();
-    } catch (e) { }
+    } catch (e) {
+        console.log("Erro ao carregar gastos fixos.");
+    }
 }
 
 async function marcarGastoComoPago(id) {
@@ -605,6 +633,36 @@ function atualizarGraficoBalanco() {
 
     chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
+
+    const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : 0;
+    const barraGasto = document.getElementById('barraGastoProporcao');
+    const textoGasto = document.getElementById('textoPorcentagemGastos');
+    const badgeStatus = document.getElementById('badgeStatusGasto');
+    const alertaGastoTexto = document.getElementById('alertaGastoTexto');
+
+    if (barraGasto && textoGasto && badgeStatus) {
+        const larguraVisual = Math.min(Math.round(pctComprometido), 100);
+        barraGasto.style.width = `${larguraVisual}%`;
+        
+        textoGasto.innerHTML = `${pctComprometido.toFixed(1).replace('.', ',')}% comprometido | <span style="color: var(--verde-destaque);">Livre: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>`;
+
+        if (pctComprometido <= 70) {
+            barraGasto.style.backgroundColor = '#00ff88';
+            badgeStatus.innerText = '🟢 Saudável';
+            badgeStatus.style.color = '#00ff88';
+            if (alertaGastoTexto) alertaGastoTexto.innerText = `💡 Excelente! Você ainda tem R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} livres na conta após gastar e investir.`;
+        } else if (pctComprometido <= 90) {
+            barraGasto.style.backgroundColor = '#f1c40f';
+            badgeStatus.innerText = '🟡 Atenção';
+            badgeStatus.style.color = '#f1c40f';
+            if (alertaGastoTexto) alertaGastoTexto.innerText = `⚠️ Boa gestão de aportes, mas o saldo livre baixou para R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+        } else {
+            barraGasto.style.backgroundColor = '#ff6b6b';
+            badgeStatus.innerText = '🔴 Extremo';
+            badgeStatus.style.color = '#ff6b6b';
+            if (alertaGastoTexto) alertaGastoTexto.innerText = `🚨 ALERTA: O compromisso total atingiu ${pctComprometido.toFixed(1)}%. Saldo livre atual: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+        }
+    }
 }
 
 async function buscarCotacaoBitcoinAoVivo() {
