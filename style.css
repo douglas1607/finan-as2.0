@@ -71,7 +71,137 @@ main {
 }
 
 /* ========================================================== */
-/* 2. HEADER E NAVEGAÇÃO MODERNA COM LOGO REFINADA            */
+/* 2. ESTRUTURAÇÃO COMPLETA DA TELA DE LOGIN / AUTENTICAÇÃO    */
+/* ========================================================== */
+body.login-page {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 100vh !important;
+    padding: 20px !important;
+}
+
+.login-card {
+    background: var(--verde-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--borda-vidro);
+    padding: 36px 32px;
+    border-radius: 24px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: var(--sombra-card);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    margin: auto;
+}
+
+.logo-login {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    gap: 12px;
+    width: 100%;
+}
+
+.tabs-login {
+    display: flex;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--borda-vidro);
+    width: 100%;
+    gap: 8px;
+    background: rgba(2, 12, 9, 0.6);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--borda-vidro);
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: none;
+    color: var(--texto-secundario);
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: var(--transicao-suave);
+}
+
+.tab-btn.active {
+    color: var(--verde-fundo-profundo);
+    background: var(--verde-destaque);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.35);
+}
+
+#formLoginBox,
+#formCadastroBox,
+#formEsqueciBox {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+}
+
+.input-group label {
+    font-size: 0.8rem;
+    color: var(--verde-suave);
+    font-weight: 600;
+}
+
+.input-group input {
+    width: 100%;
+    background: rgba(2, 12, 9, 0.8);
+    border: 1px solid var(--borda-vidro);
+    padding: 12px 16px;
+    border-radius: 12px;
+    color: var(--branco);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: var(--transicao-suave);
+}
+
+.input-group input:focus {
+    border-color: var(--verde-destaque);
+    background: rgba(3, 22, 15, 0.95);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
+}
+
+.btn-primary-block {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--verde-destaque) 0%, var(--verde-hover) 100%);
+    color: var(--verde-fundo-profundo);
+    border: none;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 0.95rem;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: var(--transicao-suave);
+    box-shadow: 0 4px 16px rgba(0, 255, 136, 0.35);
+}
+
+.btn-primary-block:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 255, 136, 0.5);
+}
+
+/* ========================================================== */
+/* 3. HEADER E NAVEGAÇÃO DO DASHBOARD PRINCIPAL               */
 /* ========================================================== */
 .cabecalho-principal,
 .dashboard-header {
@@ -249,154 +379,7 @@ main {
 }
 
 /* ========================================================== */
-/* 3. ESTILIZAÇÃO ESPECÍFICA PARA A TELA DE LOGIN / CADASTRO  */
-/* ========================================================== */
-.login-body,
-body:has(.login-container) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 20px;
-}
-
-.login-container {
-    width: 100%;
-    max-width: 440px;
-    background: var(--verde-card);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--borda-vidro);
-    border-radius: 24px;
-    padding: 36px;
-    box-shadow: var(--sombra-card);
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    box-sizing: border-box;
-}
-
-.login-header {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    text-align: center;
-    border-bottom: 1px solid var(--borda-vidro);
-    padding-bottom: 20px;
-}
-
-.login-tabs {
-    display: flex;
-    gap: 8px;
-    background: rgba(2, 12, 9, 0.6);
-    padding: 4px;
-    border-radius: 12px;
-    border: 1px solid var(--borda-vidro);
-    width: 100%;
-}
-
-.tab-btn {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--texto-secundario);
-    padding: 10px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: var(--transicao-suave);
-}
-
-.tab-btn.active,
-.tab-btn:hover {
-    background: var(--verde-destaque);
-    color: var(--verde-fundo-profundo);
-    box-shadow: 0 0 12px rgba(0, 255, 136, 0.3);
-}
-
-.auth-form {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.auth-form .input-group,
-.auth-form input {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-}
-
-.auth-form label {
-    font-size: 0.8rem;
-    color: var(--verde-suave);
-    font-weight: 600;
-}
-
-.auth-form input {
-    background: rgba(3, 16, 11, 0.9);
-    border: 1px solid var(--borda-vidro);
-    color: var(--branco);
-    padding: 12px 16px;
-    border-radius: 12px;
-    outline: none;
-    font-family: inherit;
-    font-size: 0.9rem;
-    transition: var(--transicao-suave);
-}
-
-.auth-form input:focus {
-    border-color: var(--verde-destaque);
-    background: rgba(3, 22, 15, 0.95);
-    box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
-}
-
-.auth-btn {
-    background: linear-gradient(135deg, var(--verde-destaque) 0%, var(--verde-hover) 100%);
-    color: var(--verde-fundo-profundo);
-    border: none;
-    padding: 14px;
-    border-radius: 12px;
-    cursor: pointer;
-    font-weight: 800;
-    font-size: 0.95srem;
-    transition: var(--transicao-suave);
-    width: 100%;
-    margin-top: 8px;
-    box-shadow: 0 4px 16px rgba(0, 255, 136, 0.3);
-}
-
-.auth-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 255, 136, 0.45);
-}
-
-.login-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.8rem;
-    color: var(--texto-secundario);
-    border-top: 1px solid var(--borda-vidro);
-    padding-top: 16px;
-}
-
-.login-footer a {
-    color: var(--verde-destaque);
-    font-weight: 600;
-    transition: var(--transicao-suave);
-}
-
-.login-footer a:hover {
-    text-decoration: underline;
-    color: var(--verde-suave);
-}
-
-/* ========================================================== */
-/* 4. GRID LAYOUT DO DASHBOARD                                */
+/* 4. GRID LAYOUT PARA DESKTOP                                */
 /* ========================================================== */
 .dashboard-content {
     display: grid;
@@ -764,6 +747,11 @@ body:has(.login-container) {
 @media screen and (max-width: 850px) {
     body {
         padding: 10px;
+    }
+
+    .login-card {
+        padding: 28px 20px;
+        border-radius: 20px;
     }
 
     .dashboard-header {
