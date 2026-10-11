@@ -529,6 +529,34 @@ body.login-page {
     flex-wrap: wrap;
 }
 
+/* NOVO: Formulário em linha horizontal para Gastos Variáveis */
+.simulator-box-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: rgba(2, 12, 9, 0.5);
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid var(--borda-vidro);
+    margin-bottom: 18px;
+    width: 100%;
+}
+
+.simulator-box-row .input-desc {
+    flex: 2;
+}
+
+.simulator-box-row .input-val {
+    flex: 1;
+    min-width: 120px;
+}
+
+.simulator-box-row .btn-cat {
+    flex: 1;
+    min-width: 140px;
+    white-space: nowrap;
+}
+
 .simulator-box-col {
     display: flex;
     flex-direction: column;
@@ -543,6 +571,8 @@ body.login-page {
 
 .simulator-box input,
 .simulator-box select,
+.simulator-box-row input,
+.simulator-box-row select,
 .simulator-box-col input,
 .simulator-box-col select {
     background: rgba(3, 16, 11, 0.9);
@@ -559,6 +589,8 @@ body.login-page {
 
 .simulator-box input:focus,
 .simulator-box select:focus,
+.simulator-box-row input:focus,
+.simulator-box-row select:focus,
 .simulator-box-col input:focus,
 .simulator-box-col select:focus {
     border-color: var(--verde-destaque);
@@ -567,6 +599,7 @@ body.login-page {
 }
 
 .simulator-box button,
+.simulator-box-row button,
 .simulator-box-col button {
     background: linear-gradient(135deg, var(--verde-destaque) 0%, var(--verde-hover) 100%);
     color: var(--verde-fundo-profundo);
@@ -582,6 +615,7 @@ body.login-page {
 }
 
 .simulator-box button:hover,
+.simulator-box-row button:hover,
 .simulator-box-col button:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(0, 255, 136, 0.45);
@@ -808,6 +842,7 @@ body.login-page {
     }
 
     .simulator-box,
+    .simulator-box-row,
     .simulator-box-col,
     .expense-categories,
     .forecast-grid {
@@ -819,10 +854,14 @@ body.login-page {
     .simulator-box input,
     .simulator-box select,
     .simulator-box button,
+    .simulator-box-row input,
+    .simulator-box-row select,
+    .simulator-box-row button,
     .simulator-box-col input,
     .simulator-box-col select,
     .simulator-box-col button {
         width: 100% !important;
+        flex: none !important;
     }
 
     .fixed-item {

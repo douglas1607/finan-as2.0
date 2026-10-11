@@ -239,10 +239,11 @@
                     <span class="bank-status">🟢 Sincronizado</span>
                 </div>
 
-                <div class="simulator-box">
-                    <input type="text" id="simDesc" placeholder="Ex: Mercado, Açaí, Gasolina">
-                    <input type="number" id="simVal" placeholder="Valor (R$)">
-                    <button type="button" onclick="adicionarGastoSimulado(event)">Categorizar</button>
+                <!-- Formulário alterado para class="simulator-box-row" -->
+                <div class="simulator-box-row">
+                    <input type="text" id="simDesc" class="input-desc" placeholder="Ex: Mercado, Açaí, Gasolina">
+                    <input type="number" id="simVal" class="input-val" placeholder="Valor (R$)">
+                    <button type="button" class="btn-cat" onclick="adicionarGastoSimulado(event)">Categorizar</button>
                 </div>
 
                 <div class="expense-categories">
