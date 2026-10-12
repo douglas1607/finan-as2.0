@@ -1,0 +1,15 @@
+{
+  "name": "FinancIA Autônoma",
+  "short_name": "FinancIA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#03100b",
+  "theme_color": "#00ff88",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}

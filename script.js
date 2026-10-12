@@ -1032,3 +1032,10 @@ async function gerarRelatorioPDF(e) {
         alert("Erro ao compilar informações para o PDF: " + err.message);
     }
 }
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .then(() => console.log('Service Worker registrado com sucesso!'))
+            .catch((err) => console.log('Erro ao registrar Service Worker:', err));
+    });
+}
