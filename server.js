@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -17,6 +18,15 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// ==========================================================
+// SERVIR ARQUIVOS ESTÁTICOS E PÁGINA INICIAL (PWA / FRONTEND)
+// ==========================================================
+app.use(express.static(path.join(__dirname)));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
