@@ -64,7 +64,8 @@ async function inicializarTabelas() {
                 tipo VARCHAR(50),
                 ticker VARCHAR(50),
                 quantidade NUMERIC(10,4),
-                preco_medio NUMERIC(10,2)
+                preco_medio NUMERIC(10,2),
+                data_compra VARCHAR(50)
             );
             CREATE TABLE IF NOT EXISTS entradas (
                 id SERIAL PRIMARY KEY,
@@ -81,6 +82,8 @@ async function inicializarTabelas() {
                 data VARCHAR(50)
             );
         `);
+        // Adiciona a coluna data_compra caso a tabela já existisse no Postgres sem ela
+        await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
         console.log("✅ Tabelas PostgreSQL verificadas/criadas com sucesso!");
     } catch (e) {
         console.error("Erro ao inicializar tabelas:", e.message);
@@ -216,7 +219,6 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
 
     let categoriaIA = "";
 
-    // 1. Verificação instantânea por palavras-chave comuns
     if (descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('etanol') || descNorm.includes('diesel') || descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('taxi') || descNorm.includes('pedagio') || descNorm.includes('estacionamento') || descNorm.includes('mecanico') || descNorm.includes('troca de oleo')) {
         categoriaIA = 'Transporte';
     } else if (descNorm.includes('acai') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('ifood') || descNorm.includes('pizza') || descNorm.includes('churrasco') || descNorm.includes('cerveja') || descNorm.includes('cinema') || descNorm.includes('sorvete') || descNorm.includes('sushi') || descNorm.includes('hamburguer')) {
@@ -229,17 +231,14 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
         categoriaIA = 'Compras';
     }
 
-    // 2. Se a palavra não bater nas regras rápidas, a IA assume com prompt ultra-detalhado
     if (!categoriaIA) {
         try {
             const prompt = `Sua função é classificar o gasto "${descricao}" EXATAMENTE em uma das 5 categorias abaixo:
-
             - Mercado: Compras em supermercados, atacadões, padarias, feiras livre, açougues, hortifruti, mantimentos e comida para preparar em casa.
             - Casa: Contas de água, luz, internet, gás, aluguel, condomínio, materiais de construção (cimento, tintas, reformas), eletrodomésticos, móveis, utilidades domésticas e ração de pets.
             - Lazer: Alimentação fora de casa (restaurantes, açaí, iFood, lanches, pizzas, sushi, bares, cervejas), cinema, passeios, viagens, ingressos e assinaturas como Netflix/Spotify.
             - Transporte: Combustíveis (gasolina, etanol, diesel), corridas (Uber, 99, táxi), manutenção de veículos, pneus, mecânico, pedágio, estacionamento e passagens de ônibus/metrô.
             - Compras: Vestuário (roupas, sapatos, tênis, bijuterias), eletrônicos, celulares, computadores, bicicletas, presentes, itens de uso pessoal e compras diversas.
-
             Responda APENAS com uma destas 5 palavras exatas sem explicações: Mercado, Casa, Lazer, Transporte ou Compras.`;
 
             const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
@@ -308,16 +307,16 @@ app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
-// Rotas Ativos / Portfólio
+// Rotas Ativos / Portfólio (Respeita 100% o Select e salva Data de Compra)
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
-        const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1`, [req.usuario.id]);
+        const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
         res.json(result.rows);
     } catch (err) { res.status(500).json({ erro: "Erro ao buscar ativos." }); }
 });
 
 app.post('/api/ativos', autenticarToken, async (req, res) => {
-    const { tipo, ticker, quantidade, preco_medio } = req.body;
+    const { tipo, ticker, quantidade, preco_medio, data_compra } = req.body;
     const qtdNum = parseFloat(quantidade);
     const precoNum = parseFloat(preco_medio);
 
@@ -325,10 +324,21 @@ app.post('/api/ativos', autenticarToken, async (req, res) => {
         return res.status(400).json({ erro: "Dados do ativo inválidos." });
     }
 
+    const tickerLimpo = ticker.toUpperCase().trim();
+    let tipoFinal = tipo || 'FIIs';
+
+    // Se o usuário explicitamente selecionou FIIs, Acoes ou Cripto, essa escolha é absoluta.
+    // Apenas se ele deixasse em Acoes e o ticker terminasse em 11, ajustamos para FIIs como garantia extra.
+    if (tipo === 'Acoes' && (tickerLimpo.endsWith('11') || tickerLimpo.endsWith('11B'))) {
+        tipoFinal = 'FIIs';
+    }
+
+    const dataFinal = data_compra || new Date().toLocaleDateString('pt-BR');
+
     try {
         const result = await pool.query(
-            `INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [req.usuario.id, tipo || 'Acoes', ticker.toUpperCase().trim(), qtdNum, precoNum]
+            `INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [req.usuario.id, tipoFinal, tickerLimpo, qtdNum, precoNum, dataFinal]
         );
         res.status(201).json({ id: result.rows[0].id, mensagem: "Ativo cadastrado com sucesso!" });
     } catch (err) {

@@ -32,8 +32,7 @@
             </div>
 
             <div class="header-right">
-                <button class="btn-privacy" onclick="alternarModoPrivacidade()" title="Ocultar/Exibir Valores">👁️
-                    Privado</button>
+                <button class="btn-privacy" onclick="alternarModoPrivacidade()" title="Ocultar/Exibir Valores">👁️ Privado</button>
                 <div class="header-status">
                     <span class="pulse-dot"></span>
                     <span>IA CONECTADA</span>
@@ -71,7 +70,7 @@
                 </div>
             </section>
 
-            <!-- Alocação de Ativos Dinâmica (Risco/Variável) -->
+            <!-- Alocação de Ativos Dinâmica com Data da Compra -->
             <section class="card asset-allocation">
                 <div class="card-header-flex">
                     <h2>Alocação de Ativos</h2>
@@ -79,14 +78,20 @@
                 </div>
 
                 <div id="formAlocacao" class="simulator-box-col" style="display: none;">
+                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600;">Tipo de Ativo:</label>
                     <select id="inputTipoAtivo">
-                        <option value="Cripto">Criptomoeda (Ex: bitcoin)</option>
-                        <option value="Acoes">Ação / FII (Ex: MXRF11 ou PETR4)</option>
+                        <option value="FIIs">Fundo Imobiliário (FII)</option>
+                        <option value="Acoes">Ação (Empresas B3 / BDRs)</option>
+                        <option value="Cripto">Criptomoeda (BTC, ETH, SOL, etc.)</option>
                     </select>
-                    <input type="text" id="inputTickerAtivo" placeholder="Nome ou Ticker (ex: BTC, MXRF11)">
+                    
+                    <input type="text" id="inputTickerAtivo" placeholder="Ticker/Sigla (ex: MXRF11, PETR4, SOL)">
                     <input type="number" step="any" id="inputQtdAtivo" placeholder="Quantidade de cotas/unidades">
-                    <input type="number" step="any" id="inputPrecoUnitarioAtivo"
-                        placeholder="Preço pago por cota/unidade (R$)">
+                    <input type="number" step="any" id="inputPrecoUnitarioAtivo" placeholder="Preço pago por cota/unidade no dia (R$)">
+                    
+                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600; margin-top: 4px;">Data da Compra:</label>
+                    <input type="date" id="inputDataAtivo">
+
                     <button type="button" onclick="adicionarAtivoPortfolio()">Salvar Ativo no Portfólio</button>
                 </div>
 
@@ -96,38 +101,17 @@
                 <div class="transaction-list" id="listaAtivosCadastrados" style="margin-top: 15px;"></div>
             </section>
 
-            <!-- Ativos em Destaque -->
+            <!-- Ativos em Destaque (Carrossel / Roleta Ao Vivo) -->
             <section class="card trading-feed-card">
                 <div class="card-header-flex">
                     <h2>Ativos em Destaque</h2>
                     <span class="status-badge">🔴 Ao Vivo</span>
                 </div>
-                <table class="trading-feed">
-                    <thead>
-                        <tr>
-                            <th>Ativo</th>
-                            <th>Valor</th>
-                            <th>Variação</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Cripto (BTC)</td>
-                            <td id="btcPreco" class="privacy-target">Carregando...</td>
-                            <td><span class="neon-green" id="btcVar">--</span></td>
-                        </tr>
-                        <tr>
-                            <td>Fundo Imob. (FIIs)</td>
-                            <td id="fiiPreco" class="privacy-target">R$ 102,50</td>
-                            <td><span class="neon-green">+0,8%</span></td>
-                        </tr>
-                        <tr>
-                            <td>Ações Tech</td>
-                            <td id="acoesPreco" class="privacy-target">R$ 45,80</td>
-                            <td><span class="neon-pink">-1,2%</span></td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="ticker-carousel-container">
+                    <div class="ticker-track" id="tickerTrack">
+                        <!-- Itens injetados dinamicamente em tempo real pelo script.js -->
+                    </div>
+                </div>
             </section>
 
             <!-- Previsões IA -->
@@ -208,7 +192,7 @@
                 </div>
             </section>
 
-            <!-- Gráfico Comparativo e Termômetro de Extremo de Gastos -->
+            <!-- Gráfico Comparativo e Termômetro -->
             <section class="card" style="grid-column: span 6;">
                 <div class="card-header-flex">
                     <h2>Balanço: Entradas vs Saídas</h2>
@@ -232,14 +216,13 @@
                 </div>
             </section>
 
-            <!-- Simulador / Extrato Open Finance com IA (5 Categorias) -->
+            <!-- Gastos Variáveis -->
             <section class="card expense-tracker">
                 <div class="card-header-flex">
                     <h2>Gastos Variáveis</h2>
                     <span class="bank-status">🟢 Sincronizado</span>
                 </div>
 
-                <!-- Formulário alterado para class="simulator-box-row" -->
                 <div class="simulator-box-row">
                     <input type="text" id="simDesc" class="input-desc" placeholder="Ex: Mercado, Açaí, Gasolina">
                     <input type="number" id="simVal" class="input-val" placeholder="Valor (R$)">

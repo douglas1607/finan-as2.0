@@ -20,8 +20,14 @@ window.addEventListener('DOMContentLoaded', () => {
     const avatar = document.getElementById('avatarLetra');
     if (avatar) avatar.innerText = nomeUser.charAt(0).toUpperCase();
 
+    // Define a data de hoje no campo de data da compra como padrão
+    const inputDataAtivo = document.getElementById('inputDataAtivo');
+    if (inputDataAtivo) {
+        inputDataAtivo.value = new Date().toISOString().split('T')[0];
+    }
+
     inicializarGraficos();
-    buscarCotacaoBitcoinAoVivo();
+    iniciarTickerCarrosselAoVivo();
     carregarDadosDoBD();
     carregarAtivosPortfolio();
     carregarGastosFixosBD();
@@ -131,7 +137,7 @@ function atualizarPatrimonioTotalAuto(totalCalculado) {
 }
 
 // ==========================================================
-// 1. GERENCIAMENTO DE ATIVOS E PORTFÓLIO (Cripto & Ações)
+// 1. GERENCIAMENTO DE ATIVOS E PORTFÓLIO (FIIs, Ações e Cripto)
 // ==========================================================
 async function carregarAtivosPortfolio() {
     try {
@@ -151,26 +157,21 @@ async function carregarAtivosPortfolio() {
             let valorCalculado = Number(item.quantidade) * Number(item.preco_medio || 0);
 
             if (item.tipo === 'Cripto') {
-                try {
-                    const reqBtc = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${item.ticker.toLowerCase()}&vs_currencies=brl`);
-                    const dadosCripto = await reqBtc.json();
-                    const precoAtual = dadosCripto[item.ticker.toLowerCase()]?.brl;
-                    if (precoAtual) {
-                        valorCalculado = Number(item.quantidade) * precoAtual;
-                    }
-                } catch (e) { }
                 totalCripto += valorCalculado;
+            } else if (item.tipo === 'FIIs') {
+                totalFiis += valorCalculado;
             } else {
                 totalAcoes += valorCalculado;
             }
 
             if (container) {
+                const dataFormatada = item.data_compra ? item.data_compra : 'Data não inf.';
                 const div = document.createElement('div');
                 div.className = 'transaction-item';
                 div.innerHTML = `
                     <div>
                         <strong>${item.ticker} (${item.tipo})</strong>
-                        <small>Qtd: ${item.quantidade} • Preço Médio: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Total: R$ ${valorCalculado.toFixed(2)}</small>
+                        <small>Qtd: ${item.quantidade} • Preço Pago: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Data: ${dataFormatada} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
                     <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir ativo">🗑️</button>
                 `;
@@ -196,14 +197,21 @@ async function adicionarAtivoPortfolio() {
     const tickerInput = document.getElementById('inputTickerAtivo');
     const qtdInput = document.getElementById('inputQtdAtivo');
     const precoInput = document.getElementById('inputPrecoUnitarioAtivo');
+    const dataInput = document.getElementById('inputDataAtivo');
 
-    const tipo = tipoSelect ? tipoSelect.value : 'Acoes';
+    const tipo = tipoSelect ? tipoSelect.value : 'FIIs';
     const ticker = tickerInput ? tickerInput.value.trim() : '';
     const quantidade = parseFloat(qtdInput ? qtdInput.value.replace(',', '.') : 0);
     const preco_medio = parseFloat(precoInput ? precoInput.value.replace(',', '.') : 0);
+    
+    let data_compra = dataInput && dataInput.value ? dataInput.value : '';
+    if (data_compra && data_compra.includes('-')) {
+        const p = data_compra.split('-');
+        data_compra = `${p[2]}/${p[1]}/${p[0]}`;
+    }
 
     if (!ticker || isNaN(quantidade) || quantidade <= 0 || isNaN(preco_medio) || preco_medio < 0) {
-        alert("Preencha o ticker, a quantidade e o preço unitário válidos.");
+        alert("Preencha o ticker, a quantidade e o preço pago por cota/unidade.");
         return;
     }
 
@@ -214,7 +222,7 @@ async function adicionarAtivoPortfolio() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio })
+            body: JSON.stringify({ tipo, ticker, quantidade, preco_medio, data_compra })
         });
 
         if (res.ok) {
@@ -243,7 +251,81 @@ async function removerAtivo(id) {
 }
 
 // ==========================================================
-// 2. ENTRADAS & SALÁRIOS
+// 2. ATIVOS EM DESTAQUE - CARROSSEL / ROLETA EM TEMPO REAL
+// ==========================================================
+async function iniciarTickerCarrosselAoVivo() {
+    const track = document.getElementById('tickerTrack');
+    if (!track) return;
+
+    let precosAtivos = [
+        { nome: 'Bitcoin (BTC)', preco: 'Carregando...', var: '--', classeVar: 'neon-green' },
+        { nome: 'Ethereum (ETH)', preco: 'Carregando...', var: '--', classeVar: 'neon-green' },
+        { nome: 'Solana (SOL)', preco: 'Carregando...', var: '--', classeVar: 'neon-green' },
+        { nome: 'MXRF11 (FII)', preco: 'R$ 10,25', var: '+0,45%', classeVar: 'neon-green' },
+        { nome: 'GARE11 (FII)', preco: 'R$ 9,10', var: '+0,11%', classeVar: 'neon-green' },
+        { nome: 'PETR4 (Ação)', preco: 'R$ 38,40', var: '-1,15%', classeVar: 'neon-pink' },
+        { nome: 'BBAS3 (Ação)', preco: 'R$ 27,90', var: '+0,82%', classeVar: 'neon-green' },
+        { nome: 'TAEE11 (Unit)', preco: 'R$ 35,20', var: '+0,30%', classeVar: 'neon-green' },
+        { nome: 'XPML11 (FII)', preco: 'R$ 104,80', var: '+0,65%', classeVar: 'neon-green' }
+    ];
+
+    function renderizarTicker() {
+        track.innerHTML = '';
+        precosAtivos.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'ticker-item';
+            div.innerHTML = `
+                <span class="ticker-nome">${item.nome}</span>
+                <span class="ticker-valor privacy-target">${item.preco}</span>
+                <span class="${item.classeVar}">${item.var}</span>
+            `;
+            track.appendChild(div);
+        });
+    }
+
+    renderizarTicker();
+
+    async function atualizarPrecosReais() {
+        try {
+            const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=brl&include_24hr_change=true');
+            const data = await res.json();
+            
+            if (data && data.bitcoin) {
+                const btcVal = data.bitcoin.brl;
+                const btcVarVal = data.bitcoin.brl_24h_change || 0;
+                precosAtivos[0].preco = `R$ ${btcVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                precosAtivos[0].var = `${btcVarVal >= 0 ? '+' : ''}${btcVarVal.toFixed(2)}%`;
+                precosAtivos[0].classeVar = btcVarVal >= 0 ? 'neon-green' : 'neon-pink';
+            }
+
+            if (data && data.ethereum) {
+                const ethVal = data.ethereum.brl;
+                const ethVarVal = data.ethereum.brl_24h_change || 0;
+                precosAtivos[1].preco = `R$ ${ethVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                precosAtivos[1].var = `${ethVarVal >= 0 ? '+' : ''}${ethVarVal.toFixed(2)}%`;
+                precosAtivos[1].classeVar = ethVarVal >= 0 ? 'neon-green' : 'neon-pink';
+            }
+
+            if (data && data.solana) {
+                const solVal = data.solana.brl;
+                const solVarVal = data.solana.brl_24h_change || 0;
+                precosAtivos[2].preco = `R$ ${solVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                precosAtivos[2].var = `${solVarVal >= 0 ? '+' : ''}${solVarVal.toFixed(2)}%`;
+                precosAtivos[2].classeVar = solVarVal >= 0 ? 'neon-green' : 'neon-pink';
+            }
+
+            renderizarTicker();
+        } catch (e) {
+            console.log("Erro ao atualizar cotação ao vivo.");
+        }
+    }
+
+    atualizarPrecosReais();
+    setInterval(atualizarPrecosReais, 30000);
+}
+
+// ==========================================================
+// 3. ENTRADAS & SALÁRIOS
 // ==========================================================
 async function carregarEntradasBD() {
     try {
@@ -324,7 +406,7 @@ async function removerEntrada(id) {
 }
 
 // ==========================================================
-// 3. EXTRATO E CATEGORIZAÇÃO IA (OPEN FINANCE - 5 CATEGORIAS)
+// 4. EXTRATO E CATEGORIZAÇÃO IA (5 CATEGORIAS)
 // ==========================================================
 async function carregarDadosDoBD() {
     try {
@@ -414,7 +496,7 @@ async function removerTransacaoExtrato(id) {
 }
 
 // ==========================================================
-// 4. GASTOS FIXOS MENSAIS
+// 5. GASTOS FIXOS MENSAIS
 // ==========================================================
 async function carregarGastosFixosBD() {
     try {
@@ -548,7 +630,7 @@ async function removerGastoFixo(id) {
 }
 
 // ==========================================================
-// 5. APORTES MENSAIS E GRÁFICOS
+// 6. APORTES MENSAIS E GRÁFICOS
 // ==========================================================
 function inicializarGraficos() {
     const pCanvas = document.getElementById('portfolioChart');
@@ -783,16 +865,6 @@ function atualizarGraficoBalanco() {
     }
 }
 
-async function buscarCotacaoBitcoinAoVivo() {
-    try {
-        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl&include_24hr_change=true');
-        const data = await res.json();
-        if (data && data.bitcoin) {
-            document.getElementById('btcPreco').innerText = `R$ ${data.bitcoin.brl.toLocaleString('pt-BR')}`;
-        }
-    } catch (e) { }
-}
-
 function salvarPatrimonioInicial() {
     const v = parseFloat(document.getElementById('inputNovoPatrimonio').value) || 0;
     atualizarPatrimonioTotalAuto(v);
@@ -812,7 +884,7 @@ function salvarMetaReserva() {
 }
 
 // ==========================================================
-// 6. GERAÇÃO COMPLETA DE EXTRATO FINANCEIRO EM PDF
+// 7. GERAÇÃO DE EXTRATO EM PDF
 // ==========================================================
 async function gerarRelatorioPDF(e) {
     if (e) e.preventDefault();
@@ -940,7 +1012,7 @@ async function gerarRelatorioPDF(e) {
         } else {
             ativos.forEach(item => {
                 const totalAtivo = Number(item.quantidade || 0) * Number(item.preco_medio || 0);
-                doc.text(`• ${item.ticker || ''} (${item.tipo || ''}) - Qtd: ${item.quantidade || 0} | Preço Médio: R$ ${Number(item.preco_medio || 0).toFixed(2)} | Total: R$ ${totalAtivo.toFixed(2)}`, 14, y);
+                doc.text(`• ${item.ticker || ''} (${item.tipo || ''}) - Qtd: ${item.quantidade || 0} | Preço: R$ ${Number(item.preco_medio || 0).toFixed(2)} | Data: ${item.data_compra || 'N/I'} | Total: R$ ${totalAtivo.toFixed(2)}`, 14, y);
                 y += 5;
                 if (y > 270) { doc.addPage(); y = 20; }
             });

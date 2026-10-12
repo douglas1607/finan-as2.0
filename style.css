@@ -774,7 +774,72 @@ body.login-page {
     border-radius: 14px;
     border: 1px solid var(--borda-vidro);
 }
+/* ========================================================== */
+/* CARROSSEL / ROLETA DE ATIVOS EM DESTAQUE (TICKER TAPE)     */
+/* ========================================================== */
+.ticker-carousel-container {
+    width: 100%;
+    overflow: hidden;
+    background: rgba(2, 12, 9, 0.6);
+    border-radius: 12px;
+    border: 1px solid var(--borda-vidro);
+    padding: 12px 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
 
+.ticker-track {
+    display: flex;
+    gap: 28px;
+    white-space: nowrap;
+    animation: roletaTicker 25s linear infinite;
+    padding-left: 20px;
+}
+
+.ticker-carousel-container:hover .ticker-track {
+    animation-play-state: paused; /* Pausa ao passar o mouse */
+}
+
+.ticker-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(4, 24, 17, 0.8);
+    padding: 8px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--borda-vidro);
+    font-size: 0.85rem;
+}
+
+.ticker-nome {
+    color: var(--verde-suave);
+    font-weight: 700;
+}
+
+.ticker-valor {
+    color: var(--branco);
+    font-weight: 600;
+}
+
+.neon-green {
+    color: #00ff88;
+    font-weight: 700;
+}
+
+.neon-pink {
+    color: #ff6b6b;
+    font-weight: 700;
+}
+
+@keyframes roletaTicker {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-50%);
+    }
+}
 /* ========================================================== */
 /* 6. RESPONSIVIDADE TOTAL PARA CELULAR E TABLET              */
 /* ========================================================== */
