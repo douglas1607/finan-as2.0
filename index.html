@@ -7,9 +7,7 @@
     <title>FinancIA Autônoma - Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- jsPDF para exportar o extrato em PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <!-- Configurações PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#00ff88">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,17 +29,10 @@
                         <small class="subtext-autonoma">AUTÔNOMA</small>
                     </div>
                 </div>
-                <nav class="header-nav">
-                    <a href="#" class="nav-link active">Painel</a>
-                    <a href="#" class="nav-link" onclick="gerarRelatorioPDF(event)">📄Extrato</a>
-                    <a href="#" class="nav-link" onclick="fazerLogout(event)">Sair</a>
-                </nav>
             </div>
 
             <div class="header-right">
-                <button class="btn-privacy" onclick="alternarModoPrivacidade()" title="Ocultar/Exibir Valores">👁️
-                    Privado</button>
-                <div class="header-status">
+                <div class="header-status-badge">
                     <span class="pulse-dot"></span>
                     <span>IA CONECTADA</span>
                 </div>
@@ -51,8 +42,14 @@
             </div>
         </header>
 
+        <nav class="nav-horizontal-scroll">
+            <a href="#" class="btn-nav active">Painel</a>
+            <a href="#" class="btn-nav" onclick="gerarRelatorioPDF(event)">📄 Extrato</a>
+            <button class="btn-nav btn-privacy" onclick="alternarModoPrivacidade()">👁️ Privado</button>
+            <a href="#" class="btn-nav btn-logout" onclick="fazerLogout(event)">Sair</a>
+        </nav>
+
         <main class="dashboard-content">
-            <!-- Patrimônio Total com Seletor Temporal -->
             <section class="card main-portfolio">
                 <div class="card-header-flex header-patrimonio-flex">
                     <h2>Evolução do Patrimônio Total</h2>
@@ -63,8 +60,7 @@
                             <button class="btn-time" onclick="filtrarTempoPatrimonio('meses', this)">1M</button>
                             <button class="btn-time" onclick="filtrarTempoPatrimonio('anos', this)">1A</button>
                         </div>
-                        <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir
-                            Saldo</button>
+                        <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir Saldo</button>
                     </div>
                 </div>
 
@@ -79,7 +75,6 @@
                 </div>
             </section>
 
-            <!-- Alocação de Ativos Dinâmica com Data da Compra -->
             <section class="card asset-allocation">
                 <div class="card-header-flex">
                     <h2>Alocação de Ativos</h2>
@@ -87,8 +82,7 @@
                 </div>
 
                 <div id="formAlocacao" class="simulator-box-col" style="display: none;">
-                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600;">Tipo de
-                        Ativo:</label>
+                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600;">Tipo de Ativo:</label>
                     <select id="inputTipoAtivo">
                         <option value="FIIs">Fundo Imobiliário (FII)</option>
                         <option value="Acoes">Ação (Empresas B3 / BDRs)</option>
@@ -97,11 +91,9 @@
 
                     <input type="text" id="inputTickerAtivo" placeholder="Ticker/Sigla (ex: MXRF11, PETR4, SOL)">
                     <input type="number" step="any" id="inputQtdAtivo" placeholder="Quantidade de cotas/unidades">
-                    <input type="number" step="any" id="inputPrecoUnitarioAtivo"
-                        placeholder="Preço pago por cota/unidade no dia (R$)">
+                    <input type="number" step="any" id="inputPrecoUnitarioAtivo" placeholder="Preço pago por cota/unidade no dia (R$)">
 
-                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600; margin-top: 4px;">Data
-                        da Compra:</label>
+                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600; margin-top: 4px;">Data da Compra:</label>
                     <input type="date" id="inputDataAtivo">
 
                     <button type="button" onclick="adicionarAtivoPortfolio()">Salvar Ativo no Portfólio</button>
@@ -113,20 +105,16 @@
                 <div class="transaction-list" id="listaAtivosCadastrados" style="margin-top: 15px;"></div>
             </section>
 
-            <!-- Ativos em Destaque (Carrossel / Roleta Ao Vivo) -->
             <section class="card trading-feed-card">
                 <div class="card-header-flex">
                     <h2>Ativos em Destaque</h2>
                     <span class="status-badge">🔴 Ao Vivo</span>
                 </div>
                 <div class="ticker-carousel-container">
-                    <div class="ticker-track" id="tickerTrack">
-                        <!-- Itens injetados dinamicamente em tempo real pelo script.js -->
-                    </div>
+                    <div class="ticker-track" id="tickerTrack"></div>
                 </div>
             </section>
 
-            <!-- Previsões IA -->
             <section class="card ai-forecasts">
                 <h2>Previsões da IA</h2>
                 <div class="forecast-grid">
@@ -145,7 +133,6 @@
                 </div>
             </section>
 
-            <!-- Meta de Reserva -->
             <section class="card revenue-progress">
                 <div class="card-header-flex">
                     <h2>Meta de Reserva</h2>
@@ -166,7 +153,6 @@
                 </div>
             </section>
 
-            <!-- Aportes Mensais -->
             <section class="card performance-overview">
                 <div class="card-header-flex">
                     <h2>Aportes da Reserva por Mês (R$)</h2>
@@ -179,15 +165,13 @@
                     <button type="button" onclick="adicionarAporteMes()">Registrar Aporte</button>
                 </div>
 
-                <div class="transaction-list" id="listaAportesCadastrados"
-                    style="margin-top: 15px; margin-bottom: 15px;"></div>
+                <div class="transaction-list" id="listaAportesCadastrados" style="margin-top: 15px; margin-bottom: 15px;"></div>
 
                 <div class="chart-container">
                     <canvas id="performanceChart"></canvas>
                 </div>
             </section>
 
-            <!-- Entradas e Receitas -->
             <section class="card" style="grid-column: span 6;">
                 <div class="card-header-flex">
                     <h2>Entradas & Salários</h2>
@@ -201,12 +185,10 @@
                 <div class="transaction-list" id="listaEntradasCadastradas"></div>
                 <div class="fixed-total-box" style="margin-top: 10px;">
                     <span>Total Entradas:</span>
-                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$
-                        0,00</strong>
+                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$ 0,00</strong>
                 </div>
             </section>
 
-            <!-- Gráfico Comparativo e Termômetro -->
             <section class="card" style="grid-column: span 6;">
                 <div class="card-header-flex">
                     <h2>Balanço: Entradas vs Saídas</h2>
@@ -222,18 +204,14 @@
                         <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
                     </div>
                     <div class="progress-track">
-                        <div class="progress-bar" id="barraGastoProporcao"
-                            style="width: 0%; background-color: var(--verde-destaque);"></div>
+                        <div class="progress-bar" id="barraGastoProporcao" style="width: 0%; background-color: var(--verde-destaque);"></div>
                     </div>
-                    <small id="alertaGastoTexto"
-                        style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
-                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos
-                        e reserva.
+                    <small id="alertaGastoTexto" style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
+                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos e reserva.
                     </small>
                 </div>
             </section>
 
-            <!-- Gastos Variáveis -->
             <section class="card expense-tracker">
                 <div class="card-header-flex">
                     <h2>Gastos Variáveis</h2>
@@ -272,7 +250,6 @@
                 <div class="transaction-list" id="transactionList"></div>
             </section>
 
-            <!-- Gastos Fixos -->
             <section class="card fixed-expenses">
                 <div class="card-header-flex">
                     <h2>Gastos Fixos Mensais</h2>

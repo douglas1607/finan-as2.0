@@ -20,7 +20,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const avatar = document.getElementById('avatarLetra');
     if (avatar) avatar.innerText = nomeUser.charAt(0).toUpperCase();
 
-    // Define a data de hoje no campo de data da compra como padrão
     const inputDataAtivo = document.getElementById('inputDataAtivo');
     if (inputDataAtivo) {
         inputDataAtivo.value = new Date().toISOString().split('T')[0];
@@ -136,9 +135,6 @@ function atualizarPatrimonioTotalAuto(totalCalculado) {
     chartPortfolio.update();
 }
 
-// ==========================================================
-// 1. GERENCIAMENTO DE ATIVOS E PORTFÓLIO (FIIs, Ações e Cripto)
-// ==========================================================
 async function carregarAtivosPortfolio() {
     try {
         const res = await fetch(`${API_URL}/ativos`, {
@@ -171,7 +167,7 @@ async function carregarAtivosPortfolio() {
                 div.innerHTML = `
                     <div>
                         <strong>${item.ticker} (${item.tipo})</strong>
-                        <small>Qtd: ${item.quantidade} • Preço Pago: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Data: ${dataFormatada} • Total: R$ ${valorCalculado.toFixed(2)}</small>
+                        <small>Qtd: ${item.quantidade} • Preço: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Data: ${dataFormatada} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
                     <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir ativo">🗑️</button>
                 `;
@@ -250,9 +246,6 @@ async function removerAtivo(id) {
     } catch (e) { }
 }
 
-// ==========================================================
-// 2. ATIVOS EM DESTAQUE - CARROSSEL / ROLETA EM TEMPO REAL
-// ==========================================================
 async function iniciarTickerCarrosselAoVivo() {
     const track = document.getElementById('tickerTrack');
     if (!track) return;
@@ -324,9 +317,6 @@ async function iniciarTickerCarrosselAoVivo() {
     setInterval(atualizarPrecosReais, 30000);
 }
 
-// ==========================================================
-// 3. ENTRADAS & SALÁRIOS
-// ==========================================================
 async function carregarEntradasBD() {
     try {
         const res = await fetch(`${API_URL}/entradas`, {
@@ -405,9 +395,6 @@ async function removerEntrada(id) {
     } catch (e) { }
 }
 
-// ==========================================================
-// 4. EXTRATO E CATEGORIZAÇÃO IA (5 CATEGORIAS)
-// ==========================================================
 async function carregarDadosDoBD() {
     try {
         const res = await fetch(`${API_URL}/extrato`, {
@@ -495,9 +482,6 @@ async function removerTransacaoExtrato(id) {
     } catch (e) { }
 }
 
-// ==========================================================
-// 5. GASTOS FIXOS MENSAIS
-// ==========================================================
 async function carregarGastosFixosBD() {
     try {
         const res = await fetch(`${API_URL}/gastos-fixos`, {
@@ -629,9 +613,6 @@ async function removerGastoFixo(id) {
     } catch (e) { }
 }
 
-// ==========================================================
-// 6. APORTES MENSAIS E GRÁFICOS
-// ==========================================================
 function inicializarGraficos() {
     const pCanvas = document.getElementById('portfolioChart');
     if (pCanvas) {
@@ -702,8 +683,24 @@ function inicializarGraficos() {
     if (aCanvas) {
         chartAsset = new Chart(aCanvas.getContext('2d'), {
             type: 'doughnut',
-            data: { labels: ['Reserva (Aportes)', 'Cripto', 'Ações', 'FIIs'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#00ff88', '#a7ffd5', '#00cc6a', '#1ebd58'] }] },
-            options: { responsive: true, maintainAspectRatio: false }
+            data: { 
+                labels: ['Reserva (Aportes)', 'Cripto', 'Ações', 'FIIs'], 
+                datasets: [{ 
+                    data: [0, 0, 0, 0], 
+                    backgroundColor: ['#00ff88', '#a855f7', '#00d2ff', '#ffb700'], 
+                    borderWidth: 0
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#ccc', font: { size: 11 }, usePointStyle: true, boxWidth: 8 }
+                    }
+                }
+            }
         });
     }
 
@@ -711,8 +708,26 @@ function inicializarGraficos() {
     if (perfCanvas) {
         chartPerformance = new Chart(perfCanvas.getContext('2d'), {
             type: 'bar',
-            data: { labels: ['Início'], datasets: [{ label: 'Aporte', data: [0], backgroundColor: '#00ff88' }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            data: { 
+                labels: ['Início'], 
+                datasets: [{ 
+                    label: 'Aporte', 
+                    data: [0], 
+                    backgroundColor: '#00ff88',
+                    borderRadius: 6,
+                    maxBarThickness: 50, // Barras mais encorpadas no desktop
+                    barPercentage: 0.6
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', font: { size: 10 } } }
+                }
+            }
         });
     }
 
@@ -720,8 +735,26 @@ function inicializarGraficos() {
     if (balancoCanvas) {
         chartBalanco = new Chart(balancoCanvas.getContext('2d'), {
             type: 'bar',
-            data: { labels: ['Entradas', 'Saídas'], datasets: [{ label: 'R$', data: [0, 0], backgroundColor: ['#00ff88', '#ff6b6b'] }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            data: { 
+                labels: ['Entradas', 'Saídas'], 
+                datasets: [{ 
+                    label: 'R$', 
+                    data: [0, 0], 
+                    backgroundColor: ['#00ff88', '#ff6b6b'],
+                    borderRadius: 6,
+                    maxBarThickness: 65, // Barras de Entrada e Saída mais largas e marcantes no desktop
+                    barPercentage: 0.55
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', font: { size: 10 } } }
+                }
+            }
         });
     }
 }
@@ -883,9 +916,6 @@ function salvarMetaReserva() {
     alternarFormulario('formMeta');
 }
 
-// ==========================================================
-// 7. GERAÇÃO DE EXTRATO EM PDF
-// ==========================================================
 async function gerarRelatorioPDF(e) {
     if (e) e.preventDefault();
     
@@ -963,7 +993,7 @@ async function gerarRelatorioPDF(e) {
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
-        doc.text("3. GASTOS VARIÁVEIS (Simulador / Categorização IA)", 14, y);
+        doc.text("3. GASTOS VARIÁVEIS", 14, y);
         y += 6;
         doc.setFontSize(9);
         doc.setFont("helvetica", "normal");
@@ -1032,6 +1062,7 @@ async function gerarRelatorioPDF(e) {
         alert("Erro ao compilar informações para o PDF: " + err.message);
     }
 }
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
