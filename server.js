@@ -8,7 +8,8 @@ const bcrypt = require('bcryptjs');
 const { GoogleGenAI } = require('@google/genai');
 const multer = require('multer');
 const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
+const pino = require('pino');
+const QRCodeLib = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -98,6 +99,7 @@ async function inicializarTabelas() {
             );
         `);
         await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
+        await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefone VARCHAR(50);`);
         console.log("✅ Tabelas PostgreSQL verificadas/criadas com sucesso!");
     } catch (e) {
         console.error("Erro ao inicializar tabelas:", e.message);
@@ -551,33 +553,59 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
 });
 
 // ==========================================================
-// INTEGRAÇÃO BOT WHATSAPP (BAILEYS)
+// INTEGRAÇÃO BOT WHATSAPP (BAILEYS) + QR CODE EM BASE64
 // ==========================================================
+let qrCodeAtualBase64 = '';
+let botStatusConexao = 'desconectado';
+
+// Rota para o Front-end consultar o QR Code
+app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
+    try {
+        if (botStatusConexao === 'conectado') {
+            return res.json({ status: 'conectado', mensagem: 'WhatsApp já está conectado!' });
+        }
+
+        if (!qrCodeAtualBase64) {
+            return res.json({ status: 'aguardando', mensagem: 'Iniciando gerador de QR Code... Tente em alguns segundos.' });
+        }
+
+        res.json({ status: 'pendente', qrcode: qrCodeAtualBase64 });
+    } catch (err) {
+        res.status(500).json({ erro: 'Erro ao obter QR Code.' });
+    }
+});
+
 async function iniciarBotWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true
+        printQRInTerminal: false,
+        logger: pino({ level: 'silent' })
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            console.log("📱 ESCANEIE O QR CODE ABAIXO PARA CONECTAR O BOT DO WHATSAPP:");
-            qrcode.generate(qr, { small: true });
+            botStatusConexao = 'aguardando_qr';
+            qrCodeAtualBase64 = await QRCodeLib.toDataURL(qr);
+            console.log("🔄 Novo QR Code do WhatsApp gerado para a plataforma!");
         }
 
         if (connection === 'close') {
+            botStatusConexao = 'desconectado';
+            qrCodeAtualBase64 = '';
             const shouldReconnect = (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut);
             console.log('⚠️ Conexão do WhatsApp fechada. Reconectando...', shouldReconnect);
             if (shouldReconnect) {
                 iniciarBotWhatsApp();
             }
         } else if (connection === 'open') {
+            botStatusConexao = 'conectado';
+            qrCodeAtualBase64 = '';
             console.log('🚀 BOT DO WHATSAPP CONECTADO E PRONTO PARA RECEBER GASTOS!');
         }
     });
@@ -586,15 +614,26 @@ async function iniciarBotWhatsApp() {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
 
-        const remetente = msg.key.remoteJid;
+        const remetenteRaw = msg.key.remoteJid;
+        const numeroRemetente = remetenteRaw.replace('@s.whatsapp.net', '').replace('@g.us', '').slice(-8);
+
         const textoMensagem = msg.message.conversation || 
                              msg.message.extendedTextMessage?.text || 
                              msg.message.imageMessage?.caption;
 
         if (textoMensagem) {
-            console.log(`💬 Mensagem recebida do WhatsApp (${remetente}): "${textoMensagem}"`);
+            console.log(`💬 Mensagem recebida do WhatsApp (${remetenteRaw}): "${textoMensagem}"`);
 
             try {
+                // Busca o usuário no banco pelo número de telefone cadastrado
+                const buscador = await pool.query(
+                    `SELECT id, nome FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
+                    [`%${numeroRemetente}%`]
+                );
+
+                const usuarioEncontrado = buscador.rows[0];
+                const idUsuarioFinal = usuarioEncontrado ? usuarioEncontrado.id : 1; // Fallback para ID 1 se não encontrar
+
                 const promptIA = `
                 Analise o texto abaixo enviado por um usuário no WhatsApp e verifique se é um registro de gasto ou entrada financeira.
                 Texto: "${textoMensagem}"
@@ -620,10 +659,10 @@ async function iniciarBotWhatsApp() {
                         if (resultado.tipo === 'entrada') {
                             await pool.query(
                                 `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                                [1, resultado.descricao, valorNum, dataHoje]
+                                [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
                             );
                             
-                            await sock.sendMessage(remetente, { 
+                            await sock.sendMessage(remetenteRaw, { 
                                 text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
                             });
                         } else {
@@ -636,10 +675,10 @@ async function iniciarBotWhatsApp() {
 
                             await pool.query(
                                 `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                                [1, resultado.descricao, valorNum, cat, dataHoje]
+                                [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
                             );
 
-                            await sock.sendMessage(remetente, { 
+                            await sock.sendMessage(remetenteRaw, { 
                                 text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
                             });
                         }
