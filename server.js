@@ -291,11 +291,13 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         }
 
         const conteudoTexto = req.file.buffer.toString('utf8');
+        console.log("📄 Conteúdo recebido no servidor (primeiros 300 caracteres):", conteudoTexto.substring(0, 300));
+
         let transacoesParaProcessar = [];
 
         try {
             const promptIA = `
-            Você é um extrator financeiro de alta precisão. Analise o texto deste extrato abaixo.
+            Você é um extrator financeiro de alta precisão. Analise o texto deste extrato abaixo (que pode ser do Mercado Pago ou outro banco).
             Extraia TODAS as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
             Cada item do array deve ter exatamente estas chaves:
             - "descricao": string com o nome/histórico exato da transação
@@ -308,7 +310,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             Exemplo de formato esperado:
             [
               {"descricao": "Pix Recebido", "valor": 150.00, "data": "01/08/2026"},
-              {"descricao": "Dinheiro retirado Dizimo", "valor": -356.22, "data": "01/08/2026"}
+              {"descricao": "Dinheiro retirado", "valor": -356.22, "data": "01/08/2026"}
             ]
             `;
 
@@ -316,6 +318,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 model: 'gemini-2.5-flash',
                 contents: promptIA
             });
+
+            console.log("🤖 RESPOSTA PURA DA IA:", response ? response.text : "Sem resposta");
 
             if (response && response.text) {
                 let textoResposta = response.text.trim();
@@ -330,7 +334,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 transacoesParaProcessar = JSON.parse(textoResposta);
             }
         } catch (errIA) {
-            console.error("Erro na IA ao ler extrato:", errIA);
+            console.error("❌ Erro na IA ao ler extrato:", errIA);
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {

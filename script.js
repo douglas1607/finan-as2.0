@@ -1079,7 +1079,7 @@ async function importarArquivoOFX(input) {
 
     const formData = new FormData();
 
-    // Se for PDF, extrai o texto perfeitamente no navegador antes de enviar
+    // Se for PDF, extrai o texto perfeitamente no navegador com quebras de linha limpas
     if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
         try {
             const arrayBuffer = await arquivo.arrayBuffer();
@@ -1090,9 +1090,25 @@ async function importarArquivoOFX(input) {
             for (let i = 1; i <= pdfDoc.numPages; i++) {
                 const pagina = await pdfDoc.getPage(i);
                 const conteudoPagina = await pagina.getTextContent();
-                const textoPagina = conteudoPagina.items.map(item => item.str).join(' ');
-                textoCompleto += textoPagina + '\n';
+                
+                // Mapeia os blocos de texto garantindo espaçamento e quebras legíveis
+                let ultimaY = null;
+                let linhaAtual = '';
+
+                conteudoPagina.items.forEach(item => {
+                    const y = Math.round(item.transform[5]);
+                    if (ultimaY === null || Math.abs(y - ultimaY) > 5) {
+                        if (linhaAtual) textoCompleto += linhaAtual + '\n';
+                        linhaAtual = item.str;
+                        ultimaY = y;
+                    } else {
+                        linhaAtual += ' ' + item.str;
+                    }
+                });
+                if (linhaAtual) textoCompleto += linhaAtual + '\n';
             }
+
+            console.log("📄 TEXTO EXTRAÍDO DO PDF NO NAVEGADOR:\n", textoCompleto);
 
             if (!textoCompleto.trim()) {
                 alert("O PDF está vazio ou não contém texto legível.");
