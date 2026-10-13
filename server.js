@@ -283,7 +283,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota Universal de Importação de Extratos (Aceita .OFX, .PDF, .TXT, .CSV com IA Gemini)
+// Rota Universal de Importação de Extratos (Com tratamento de erro seguro para PDF)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -299,16 +299,16 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             try {
                 const pdfBase64 = req.file.buffer.toString('base64');
                 const promptPDF = `
-                Você é um extrator financeiro de precisão. Analise este extrato bancário em PDF.
-                Extraia TODAS as movimentações financeiras presentes no documento e retorne APENAS um array JSON puro (sem markdown extra).
-                Regras:
-                - "valor": número positivo para entradas/Pix recebido, número negativo para saídas/gastos.
-                - "descricao": descrição clara da transação.
-                - "data": data no formato DD/MM/AAAA.
-                Formato exato de resposta:
+                Analise este extrato bancário em PDF. Extraia todas as transações financeiras e retorne estritamente um array JSON puro, sem crases, sem markdown e sem texto adicional.
+                Cada item do array deve ter exatamente estas chaves:
+                - "descricao": string com o nome da transação
+                - "valor": número (positivo para entradas/recebimentos, negativo para saídas/gastos)
+                - "data": string no formato DD/MM/AAAA
+
+                Exemplo de formato esperado:
                 [
-                  {"descricao": "Pix recebido João", "valor": 150.00, "data": "10/10/2026"},
-                  {"descricao": "Supermercado Moranguinho", "valor": -85.50, "data": "11/10/2026"}
+                  {"descricao": "Pix Recebido", "valor": 100.00, "data": "12/10/2026"},
+                  {"descricao": "Supermercado", "valor": -50.00, "data": "12/10/2026"}
                 ]
                 `;
 
@@ -321,12 +321,22 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 });
 
                 if (response && response.text) {
-                    const textoLimpo = response.text.replace(/```json|```/g, '').trim();
-                    transacoesParaProcessar = JSON.parse(textoLimpo);
+                    let textoResposta = response.text.trim();
+                    // Remove qualquer marcação de bloco de código markdown se o modelo insistir em colocar
+                    textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    
+                    // Garante que pega apenas do primeiro colchete '[' até o último ']'
+                    const inicio = textoResposta.indexOf('[');
+                    const fim = textoResposta.lastIndexOf(']');
+                    if (inicio !== -1 && fim !== -1) {
+                        textoResposta = textoResposta.substring(inicio, fim + 1);
+                    }
+
+                    transacoesParaProcessar = JSON.parse(textoResposta);
                 }
             } catch (errPDF) {
-                console.error("Erro ao ler PDF com Gemini:", errPDF);
-                return res.status(400).json({ erro: "Não foi possível extrair os dados deste PDF. Tente outro arquivo." });
+                console.error("❌ Erro detalhado ao ler PDF com Gemini:", errPDF.message || errPDF);
+                return res.status(400).json({ erro: "Não foi possível extrair os dados deste PDF. Verifique se o PDF contém texto legível." });
             }
         } 
         // 2. CASO SEJA OFX / TEXTO / CSV
@@ -365,7 +375,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
-            return res.status(400).json({ erro: 'Nenhuma transação encontrada no arquivo enviado.' });
+            return res.status(400).json({ erro: 'Nenhuma transação válida foi encontrada no arquivo enviado.' });
         }
 
         let importadosCount = 0;
@@ -375,6 +385,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             const valorNum = parseFloat(item.valor);
             const descricao = item.descricao || 'Movimentação Bancária';
             const dataFormatada = item.data || new Date().toLocaleDateString('pt-BR');
+
+            if (isNaN(valorNum)) continue;
 
             if (valorNum > 0) {
                 await pool.query(
@@ -410,7 +422,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         });
 
     } catch (err) {
-        console.error("Erro ao processar extrato:", err);
+        console.error("Erro geral ao processar extrato:", err);
         return res.status(500).json({ erro: 'Erro interno ao ler e processar o extrato enviado.' });
     }
 });
