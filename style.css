@@ -67,6 +67,130 @@ main {
     background: var(--verde-destaque);
 }
 
+/* ========================================================== */
+/* TELA DE LOGIN & AUTENTICAÇÃO                               */
+/* ========================================================== */
+body.login-page {
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+}
+
+.login-card {
+    background: var(--verde-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--borda-vidro);
+    border-radius: 22px;
+    padding: 32px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: var(--sombra-card);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.logo-login {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 4px;
+}
+
+.tabs-login {
+    display: flex;
+    background: rgba(2, 12, 9, 0.6);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--borda-vidro);
+    gap: 4px;
+}
+
+.tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--texto-secundario);
+    padding: 10px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: var(--transicao-suave);
+    text-align: center;
+}
+
+.tab-btn.active {
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--verde-destaque);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+#formLoginBox,
+#formCadastroBox,
+#formEsqueciBox {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.input-group label {
+    font-size: 0.8rem;
+    color: var(--verde-suave);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.input-group input {
+    background: rgba(3, 16, 11, 0.9);
+    border: 1px solid var(--borda-vidro);
+    color: var(--branco);
+    padding: 12px 16px;
+    border-radius: 12px;
+    outline: none;
+    font-family: inherit;
+    font-size: 0.95rem;
+    width: 100%;
+    transition: var(--transicao-suave);
+}
+
+.input-group input:focus {
+    border-color: var(--verde-destaque);
+    background: rgba(3, 22, 15, 0.95);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
+}
+
+.btn-primary-block {
+    background: linear-gradient(135deg, var(--verde-destaque) 0%, var(--verde-hover) 100%);
+    color: var(--verde-fundo-profundo);
+    border: none;
+    padding: 14px 20px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 0.95rem;
+    transition: var(--transicao-suave);
+    width: 100%;
+    box-shadow: 0 4px 16px rgba(0, 255, 136, 0.3);
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-primary-block:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 6px 20px rgba(0, 255, 136, 0.45);
+}
+
 /* HEADER E NAVEGAÇÃO DO DASHBOARD (ESTILO BANCO DIGITAL) */
 .dashboard-header {
     background: rgba(4, 20, 14, 0.9);
