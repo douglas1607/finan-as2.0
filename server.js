@@ -107,11 +107,10 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Lista de modelos em ordem de prioridade para fallback automático contra erro 503
+// Nomes corrigidos para a nova SDK @google/genai
 const MODELOS_DISPONIVEIS = [
-    'gemini-3.8-flash',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro'
+    'gemini-2.5-flash',
+    'gemini-2.0-flash'
 ];
 
 async function chamarComRetry(prompt) {
@@ -129,7 +128,7 @@ async function chamarComRetry(prompt) {
                 ultimoErro = err;
                 console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}): ${err.message}`);
                 
-                if (err.message.includes('503') || err.message.includes('UNAVAILABLE')) {
+                if (err.message.includes('503') || err.message.includes('UNAVAILABLE') || err.message.includes('429')) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
                     break; 
@@ -581,7 +580,8 @@ async function iniciarBotWhatsApp() {
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        logger: pino({ level: 'silent' })
+        logger: pino({ level: 'silent' }),
+        markOnlineOnConnect: true
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -627,7 +627,7 @@ async function iniciarBotWhatsApp() {
 
             if (!textoMensagem) return;
 
-            // Verificação flexível de Gatilhos (aceita '!', '/', 'paguei', 'gasto', 'comprei')
+            // Verificação flexível de Gatilhos
             const textoMinusculo = textoMensagem.toLowerCase();
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei'];
             
@@ -635,7 +635,7 @@ async function iniciarBotWhatsApp() {
 
             if (!temGatilho) return; // Ignora conversas normais
 
-            // Limpa o gatilho e espaços extras
+            // Limpa o gatilho
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
                 if (textoLimpo.toLowerCase().startsWith(g)) {
@@ -645,7 +645,7 @@ async function iniciarBotWhatsApp() {
 
             console.log(`💬 Comando financeiro recebido (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
 
-            // Busca o usuário no banco (ID 1 como padrão para o seu painel)
+            // Busca o usuário no banco (ID 1 como padrão)
             let idUsuarioFinal = 1;
             const primeiroUser = await pool.query(`SELECT id FROM usuarios ORDER BY id ASC LIMIT 1`);
             if (primeiroUser.rows.length > 0) {
@@ -663,49 +663,65 @@ async function iniciarBotWhatsApp() {
             Se não for um registro financeiro, responda: {"eGasto": false}
             `;
 
-            const respostaIA = await chamarComRetry(promptIA);
+            let resultado = { eGasto: false };
 
-            if (respostaIA && respostaIA.text) {
-                let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-                
-                const inicio = jsonLimpo.indexOf('{');
-                const fim = jsonLimpo.lastIndexOf('}');
-                if (inicio !== -1 && fim !== -1) {
-                    jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
-                }
-
-                const resultado = JSON.parse(jsonLimpo);
-
-                if (resultado.eGasto) {
-                    const valorNum = parseFloat(resultado.valor);
-                    const dataHoje = new Date().toLocaleDateString('pt-BR');
-
-                    if (resultado.tipo === 'entrada') {
-                        await pool.query(
-                            `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                            [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
-                        );
-                        
-                        await sock.sendMessage(remetenteRaw, { 
-                            text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
-                        });
-                    } else {
-                        const descNorm = resultado.descricao.toLowerCase();
-                        let cat = 'Compras';
-                        if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
-                        else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
-                        else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('pizza')) cat = 'Lazer';
-                        else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
-
-                        await pool.query(
-                            `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                            [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
-                        );
-
-                        await sock.sendMessage(remetenteRaw, { 
-                            text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
-                        });
+            try {
+                const respostaIA = await chamarComRetry(promptIA);
+                if (respostaIA && respostaIA.text) {
+                    let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const inicio = jsonLimpo.indexOf('{');
+                    const fim = jsonLimpo.lastIndexOf('}');
+                    if (inicio !== -1 && fim !== -1) {
+                        jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
                     }
+                    resultado = JSON.parse(jsonLimpo);
+                }
+            } catch (errIA) {
+                console.warn("⚠️ IA indisponível ou cota excedida. Usando extrator de emergência por Regex...");
+                // Extrator de emergência caso a cota do Gemini estoure
+                const numerosEncontrados = textoLimpo.match(/\d+([.,]\d+)?/);
+                if (numerosEncontrados) {
+                    const valExt = parseFloat(numerosEncontrados[0].replace(',', '.'));
+                    let descExt = textoLimpo.replace(numerosEncontrados[0], '').replace(/reais|de|por|em/gi, '').trim();
+                    if (!descExt) descExt = 'Gasto WhatsApp';
+                    resultado = {
+                        eGasto: true,
+                        descricao: descExt,
+                        valor: valExt,
+                        tipo: 'saida'
+                    };
+                }
+            }
+
+            if (resultado.eGasto) {
+                const valorNum = parseFloat(resultado.valor);
+                const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+                if (resultado.tipo === 'entrada') {
+                    await pool.query(
+                        `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
+                        [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
+                    );
+                    
+                    await sock.sendMessage(remetenteRaw, { 
+                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
+                    });
+                } else {
+                    const descNorm = resultado.descricao.toLowerCase();
+                    let cat = 'Compras';
+                    if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
+                    else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
+                    else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('pizza')) cat = 'Lazer';
+                    else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
+
+                    await pool.query(
+                        `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
+                        [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
+                    );
+
+                    await sock.sendMessage(remetenteRaw, { 
+                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
+                    });
                 }
             }
         } catch (err) {
