@@ -7,6 +7,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { GoogleGenAI } = require('@google/genai');
 const multer = require('multer');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const qrcode = require('qrcode-terminal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -376,7 +378,6 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
             if (isNaN(valorNum)) continue;
 
-            // Chave para identificar cobranças duplicadas idênticas
             const chaveUnica = `${descricao.toLowerCase().trim()}_${valorNum}_${dataFormatada}`;
             if (conjuntoTransacoes.has(chaveUnica)) {
                 possiveisDuplicadas.push(`${descricao} (R$ ${Math.abs(valorNum).toFixed(2)})`);
@@ -548,6 +549,111 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
         res.json({ mensagem: "Ativo removido." });
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir ativo." }); }
 });
+
+// ==========================================================
+// INTEGRAÇÃO BOT WHATSAPP (BAILEYS)
+// ==========================================================
+async function iniciarBotWhatsApp() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: true
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.log("📱 ESCANEIE O QR CODE ABAIXO PARA CONECTAR O BOT DO WHATSAPP:");
+            qrcode.generate(qr, { small: true });
+        }
+
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut);
+            console.log('⚠️ Conexão do WhatsApp fechada. Reconectando...', shouldReconnect);
+            if (shouldReconnect) {
+                iniciarBotWhatsApp();
+            }
+        } else if (connection === 'open') {
+            console.log('🚀 BOT DO WHATSAPP CONECTADO E PRONTO PARA RECEBER GASTOS!');
+        }
+    });
+
+    sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
+        const remetente = msg.key.remoteJid;
+        const textoMensagem = msg.message.conversation || 
+                             msg.message.extendedTextMessage?.text || 
+                             msg.message.imageMessage?.caption;
+
+        if (textoMensagem) {
+            console.log(`💬 Mensagem recebida do WhatsApp (${remetente}): "${textoMensagem}"`);
+
+            try {
+                const promptIA = `
+                Analise o texto abaixo enviado por um usuário no WhatsApp e verifique se é um registro de gasto ou entrada financeira.
+                Texto: "${textoMensagem}"
+
+                Se for um gasto ou receita, responda APENAS um JSON no formato:
+                {"eGasto": true, "descricao": "nome curto do gasto", "valor": 00.00, "tipo": "saida"} 
+                (use "tipo": "entrada" se for um Pix recebido/salário).
+
+                Se NÃO for um registro financeiro, responda APENAS:
+                {"eGasto": false}
+                `;
+
+                const respostaIA = await chamarComRetry(promptIA);
+
+                if (respostaIA && respostaIA.text) {
+                    let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const resultado = JSON.parse(jsonLimpo);
+
+                    if (resultado.eGasto) {
+                        const valorNum = parseFloat(resultado.valor);
+                        const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+                        if (resultado.tipo === 'entrada') {
+                            await pool.query(
+                                `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
+                                [1, resultado.descricao, valorNum, dataHoje]
+                            );
+                            
+                            await sock.sendMessage(remetente, { 
+                                text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
+                            });
+                        } else {
+                            const descNorm = resultado.descricao.toLowerCase();
+                            let cat = 'Compras';
+                            if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
+                            else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
+                            else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante')) cat = 'Lazer';
+                            else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
+
+                            await pool.query(
+                                `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
+                                [1, resultado.descricao, valorNum, cat, dataHoje]
+                            );
+
+                            await sock.sendMessage(remetente, { 
+                                text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
+                            });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Erro ao processar mensagem do WhatsApp:", err.message);
+            }
+        }
+    });
+}
+
+// Inicia o bot do WhatsApp em segundo plano
+iniciarBotWhatsApp();
 
 app.listen(PORT, () => {
     console.log(`🚀 FinancIA Autônoma rodando na porta ${PORT}`);
