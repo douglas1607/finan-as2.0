@@ -669,34 +669,37 @@ async function iniciarBotWhatsApp() {
             console.log(`💬 Comando financeiro recebido de ${numeroRemetente} (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
 
             // ==========================================
-            // IDENTIFICAÇÃO INTELIGENTE DO USUÁRIO PELO TELEFONE
+            // IDENTIFICAÇÃO INTELIGENTE DO USUÁRIO PELO TELEFONE (VERSÃO BLINDADA)
             // ==========================================
-            let idUsuarioFinal = null; // Sem fallback cego! Exige vínculo real.
+            let idUsuarioFinal = null; 
 
             try {
                 const numeroLimpo = numeroRemetente.replace(/\D/g, '');
-                const sufixoTel = numeroLimpo.slice(-9); // Pega os últimos 9 dígitos para tolerar variações de DDD/55
+                // Pega os últimos 8 dígitos do número enviado pelo WhatsApp (ex: 94881537)
+                const ultimos8Digitos = numeroLimpo.slice(-8);
+                
+                console.log(`🔍 Número recebido: "${numeroRemetente}" -> Limpo: "${numeroLimpo}" -> Buscando finais: "${ultimos8Digitos}"`);
 
-                // Busca exata ou por trecho final no banco
+                // Busca no banco qualquer usuário cujo telefone termine com os mesmos 8 dígitos
                 const buscaUser = await pool.query(
-                    `SELECT id, nome, telefone FROM usuarios WHERE telefone = $1 OR telefone LIKE $2 OR telefone LIKE $3 LIMIT 1`,
-                    [numeroLimpo, `%${sufixoTel}%`, `%${numeroLimpo}%`]
+                    `SELECT id, nome, telefone FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
+                    [`%${ultimos8Digitos}`]
                 );
 
                 if (buscaUser.rows.length > 0) {
                     idUsuarioFinal = buscaUser.rows[0].id;
-                    console.log(`👤 Usuário identificado no banco: ID ${idUsuarioFinal} (${buscaUser.rows[0].nome})`);
+                    console.log(`👤 Usuário identificado no banco: ID ${idUsuarioFinal} (${buscaUser.rows[0].nome}) via final ${ultimos8Digitos}`);
                 } else {
-                    console.warn(`⚠️ Telefone ${numeroLimpo} não encontrado em nenhum usuário cadastrado.`);
+                    console.warn(`⚠️ Nenhum usuário encontrado com o final "${ultimos8Digitos}".`);
                 }
             } catch (errUser) {
                 console.error("Erro ao buscar usuário por telefone:", errUser.message);
             }
 
-            // Se o usuário não estiver vinculado, avisa no WhatsApp e interrompe para não herdar seu ID
+            // Se o usuário não estiver vinculado, avisa no WhatsApp
             if (!idUsuarioFinal) {
-                await sock.sendMessage(remetenteRaw, {
-                    text: `⚠️ *Número não vinculado!*\nSeu número do WhatsApp (${numeroRemetente}) ainda não está cadastrado em nenhuma conta do FinancIA.\n\nAcesse o painel web, vá em *⚙️ Vincular Meu WhatsApp* e salve seu número para começar a registrar gastos!`
+                await sock.sendMessage(remetenteRaw, { 
+                    text: `⚠️ *Número não vinculado!*\nO final do seu número do WhatsApp (${numeroRemetente.slice(-8)}) não está cadastrado em nenhuma conta do FinancIA.\n\nAcesse o painel web, vá em *⚙️ Vincular Meu WhatsApp* e salve seu número correto!` 
                 });
                 return;
             }
