@@ -1,4 +1,7 @@
-const API_URL = 'https://finan-as2-0.onrender.com/api';
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3000/api'
+    : 'https://finan-as2-0.onrender.com/api';
+
 let token = localStorage.getItem('financia_token');
 let modoPrivado = false;
 
@@ -1079,7 +1082,6 @@ async function importarArquivoOFX(input) {
 
     const formData = new FormData();
 
-    // Se for PDF, extrai o texto perfeitamente no navegador com quebras de linha limpas
     if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
         try {
             const arrayBuffer = await arquivo.arrayBuffer();
@@ -1091,7 +1093,6 @@ async function importarArquivoOFX(input) {
                 const pagina = await pdfDoc.getPage(i);
                 const conteudoPagina = await pagina.getTextContent();
                 
-                // Mapeia os blocos de texto garantindo espaçamento e quebras legíveis
                 let ultimaY = null;
                 let linhaAtual = '';
 
@@ -1107,8 +1108,6 @@ async function importarArquivoOFX(input) {
                 });
                 if (linhaAtual) textoCompleto += linhaAtual + '\n';
             }
-
-            
 
             if (!textoCompleto.trim()) {
                 alert("O PDF está vazio ou não contém texto legível.");
