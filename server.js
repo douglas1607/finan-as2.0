@@ -21,12 +21,16 @@ app.use(cors({
 
 app.use(express.json());
 
+// ==========================================================
+// SERVIR ARQUIVOS ESTÁTICOS E PÁGINA INICIAL (PWA / FRONTEND)
+// ==========================================================
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Inicialização segura da IA com a chave explícita
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -100,22 +104,37 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Função auxiliar para tentar chamar a IA com novas tentativas caso dê erro temporário de alta demanda (503)
-async function chamarComRetry(prompt, maxTentativas = 3) {
-    for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
-        try {
-            const response = await ai.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: prompt
-            });
-            return response;
-        } catch (err) {
-            console.warn(`⚠️ Tentativa ${tentativa} falhou: ${err.message}`);
-            if (tentativa === maxTentativas) throw err;
-            // Aguarda 2 segundos antes de tentar novamente
-            await new Promise(resolve => setTimeout(resolve, 2000));
+// Lista de modelos em ordem de prioridade para fallback automático contra o erro 503
+const MODELOS_DISPONIVEIS = [
+    'gemini-3.8-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro'
+];
+
+async function chamarComRetry(prompt) {
+    let ultimoErro = null;
+
+    for (const modelo of MODELOS_DISPONIVEIS) {
+        for (let tentativa = 1; tentativa <= 2; tentativa++) {
+            try {
+                const response = await ai.models.generateContent({
+                    model: modelo,
+                    contents: prompt
+                });
+                return response;
+            } catch (err) {
+                ultimoErro = err;
+                console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}): ${err.message}`);
+                
+                if (err.message.includes('503') || err.message.includes('UNAVAILABLE')) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } else {
+                    break; 
+                }
+            }
         }
     }
+    throw ultimoErro;
 }
 
 function autenticarToken(req, res, next) {
@@ -298,7 +317,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação protegida usando o modelo gemini-3.8-flash com sistema de retry automático
+// Rota de Importação protegida com fallback automático de modelos
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
