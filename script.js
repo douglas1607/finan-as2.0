@@ -264,7 +264,6 @@ async function iniciarTickerCarrosselAoVivo() {
 
     function renderizarTicker() {
         track.innerHTML = '';
-        // Duplicamos o array para garantir o loop infinito fluido
         const ativosDuplicados = [...precosAtivos, ...precosAtivos];
 
         ativosDuplicados.forEach(item => {
@@ -279,7 +278,6 @@ async function iniciarTickerCarrosselAoVivo() {
         });
     }
 
-    // Renderiza IMEDIATAMENTE os itens para o card nunca ficar vazio
     renderizarTicker();
 
     async function atualizarPrecosReais() {
@@ -1075,13 +1073,22 @@ if ('serviceWorker' in navigator) {
             .catch((err) => console.log('Erro ao registrar Service Worker:', err));
     });
 }
+
 async function importarArquivoOFX(input) {
     const arquivo = input.files[0];
     if (!arquivo) return;
 
+    // Utiliza a chave correta guardada no login ('financia_token')
+    const tokenAtual = localStorage.getItem('financia_token');
+    if (!tokenAtual) {
+        alert("Sessão expirada. Faça login novamente.");
+        window.location.href = 'login.html';
+        return;
+    }
+
     const formData = new FormData();
 
-    // Se for PDF, extrai o texto no navegador primeiro para garantir 100% de compatibilidade
+    // Se for PDF, extrai o texto no navegador primeiro para garantir compatibilidade
     if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
         try {
             const arrayBuffer = await arquivo.arrayBuffer();
@@ -1100,7 +1107,6 @@ async function importarArquivoOFX(input) {
                 return;
             }
 
-            // Cria um arquivo de texto virtual com o conteúdo extraído do PDF para enviar ao servidor
             const arquivoTexto = new File([textoCompleto], "extrato_convertido.txt", { type: "text/plain" });
             formData.append('arquivoOfx', arquivoTexto);
         } catch (e) {
@@ -1109,22 +1115,15 @@ async function importarArquivoOFX(input) {
             return;
         }
     } else {
-        // Se for OFX ou CSV, envia direto
         formData.append('arquivoOfx', arquivo);
     }
 
-    // Mostra feedback visual de carregamento
-    const token = localStorage.getItem('token');
-    if (!token) {
-        alert("Sessão expirada. Faça login novamente.");
-        return;
-    }
-
     try {
-        const resposta = await fetch('/api/importar-ofx', {
+        // Aponta para a API correta no Render usando a variável API_URL
+        const resposta = await fetch(`${API_URL}/importar-ofx`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${tokenAtual}`
             },
             body: formData
         });
@@ -1132,7 +1131,7 @@ async function importarArquivoOFX(input) {
         const resultado = await resposta.json();
         if (resposta.ok) {
             alert(resultado.mensagem);
-            window.location.reload(); // Recarrega para atualizar os gráficos e saldos
+            window.location.reload();
         } else {
             alert(resultado.erro || "Erro ao importar arquivo.");
         }
