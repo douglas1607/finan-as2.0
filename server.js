@@ -283,9 +283,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-const pdfParse = require('pdf-parse');
-
-// Rota Universal de Importação de Extratos (.OFX e .PDF com Leitura de Texto Segura)
+// Rota Universal de Importação de Extratos (.OFX e .PDF com Gemini)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -296,37 +294,30 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         const nomeArquivo = req.file.originalname.toLowerCase();
         let transacoesParaProcessar = [];
 
-        // 1. CASO SEJA PDF (Extrai o texto com pdf-parse e envia o texto limpo para o Gemini)
+        // 1. CASO SEJA PDF (Enviado em base64 para o Gemini processar)
         if (mimeType.includes('pdf') || nomeArquivo.endsWith('.pdf')) {
             try {
-                const pdfData = await pdfParse(req.file.buffer);
-                const textoExtrato = pdfData.text;
-
-                if (!textoExtrato || textoExtrato.trim().length < 10) {
-                    return res.status(400).json({ erro: "O PDF parece estar vazio ou escaneado como imagem. Tente exportar o extrato em formato texto/OFX." });
-                }
-
+                const pdfBase64 = req.file.buffer.toString('base64');
                 const promptPDF = `
-                Você é um extrator financeiro de precisão. Analise o texto abaixo extraído de um extrato bancário em PDF.
-                Extraia todas as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown e sem texto adicional).
+                Analise este extrato bancário em PDF. Extraia todas as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown e sem texto adicional).
                 Cada item do array deve ter exatamente estas chaves:
-                - "descricao": string com o nome ou histórico da transação
-                - "valor": número (positivo para entradas/recebimentos/Pix recebido, negativo para saídas/gastos/compras)
+                - "descricao": string com o nome da transação
+                - "valor": número (positivo para entradas/recebimentos, negativo para saídas/gastos)
                 - "data": string no formato DD/MM/AAAA
-
-                Texto do Extrato:
-                ${textoExtrato}
 
                 Exemplo de formato esperado:
                 [
-                  {"descricao": "Pix Recebido Joao", "valor": 100.00, "data": "12/10/2026"},
-                  {"descricao": "Supermercado Moranguinho", "valor": -50.00, "data": "12/10/2026"}
+                  {"descricao": "Pix Recebido", "valor": 100.00, "data": "12/10/2026"},
+                  {"descricao": "Supermercado", "valor": -50.00, "data": "12/10/2026"}
                 ]
                 `;
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
-                    contents: promptPDF
+                    contents: [
+                        { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
+                        { text: promptPDF }
+                    ]
                 });
 
                 if (response && response.text) {
@@ -342,8 +333,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                     transacoesParaProcessar = JSON.parse(textoResposta);
                 }
             } catch (errPDF) {
-                console.error("❌ Erro ao processar PDF:", errPDF.message || errPDF);
-                return res.status(400).json({ erro: "Não foi possível ler as transações deste PDF. Tente enviar o arquivo em formato OFX." });
+                console.error("❌ Erro ao processar PDF com Gemini:", errPDF.message || errPDF);
+                return res.status(400).json({ erro: "Não foi possível extrair os dados deste PDF. Tente enviar o formato OFX." });
             }
         } 
         // 2. CASO SEJA OFX / TEXTO / CSV
