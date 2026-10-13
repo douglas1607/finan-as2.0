@@ -1078,7 +1078,38 @@ async function importarArquivoOFX(input) {
     }
 
     const formData = new FormData();
-    formData.append('arquivoOfx', arquivo); // Envia o arquivo original (PDF, OFX, CSV ou Imagem) direto para o backend
+
+    // Se for PDF, extrai o texto perfeitamente no navegador antes de enviar
+    if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
+        try {
+            const arrayBuffer = await arquivo.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdfDoc = await loadingTask.promise;
+            let textoCompleto = '';
+
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                const pagina = await pdfDoc.getPage(i);
+                const conteudoPagina = await pagina.getTextContent();
+                const textoPagina = conteudoPagina.items.map(item => item.str).join(' ');
+                textoCompleto += textoPagina + '\n';
+            }
+
+            if (!textoCompleto.trim()) {
+                alert("O PDF está vazio ou não contém texto legível.");
+                return;
+            }
+
+            const blob = new Blob([textoCompleto], { type: 'text/plain' });
+            const arquivoTexto = new File([blob], "extrato.txt", { type: 'text/plain' });
+            formData.append('arquivoOfx', arquivoTexto);
+        } catch (e) {
+            console.error("Erro ao ler PDF no navegador:", e);
+            alert("Não foi possível ler este PDF.");
+            return;
+        }
+    } else {
+        formData.append('arquivoOfx', arquivo);
+    }
 
     try {
         const resposta = await fetch(`${API_URL}/importar-ofx`, {

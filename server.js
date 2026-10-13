@@ -283,88 +283,54 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota Universal de Importação (Aceita PDF, imagens, OFX, CSV e TXT usando o Gemini Multimodal)
+// Rota de Importação processando o texto extraído do extrato
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ erro: 'Nenhum arquivo enviado.' });
         }
 
-        const mimeType = req.file.mimetype || '';
-        const nomeArquivo = req.file.originalname.toLowerCase();
+        const conteudoTexto = req.file.buffer.toString('utf8');
         let transacoesParaProcessar = [];
 
-        // Se for PDF ou Imagem, envia o buffer diretamente via Gemini Multimodal em Base64
-        if (mimeType.includes('pdf') || mimeType.includes('image') || nomeArquivo.endsWith('.pdf') || nomeArquivo.endsWith('.png') || nomeArquivo.endsWith('.jpg') || nomeArquivo.endsWith('.jpeg')) {
-            try {
-                const base64Data = req.file.buffer.toString('base64');
-                const tipoMimeFinal = mimeType.includes('image') ? mimeType : 'application/pdf';
+        try {
+            const promptIA = `
+            Você é um extrator financeiro de alta precisão. Analise o texto deste extrato abaixo.
+            Extraia TODAS as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
+            Cada item do array deve ter exatamente estas chaves:
+            - "descricao": string com o nome/histórico exato da transação
+            - "valor": número (positivo para entradas/Pix recebido/salário, negativo para saídas/compras/pagamentos)
+            - "data": string no formato DD/MM/AAAA
 
-                const promptVisual = `
-                Você é um extrator financeiro de alta precisão. Analise este extrato bancário (documento PDF ou imagem).
-                Extraia TODAS as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
-                Cada item do array deve ter exatamente estas chaves:
-                - "descricao": string com o nome/histórico exato da transação (ex: "Dinheiro retirado Dizimo", "Brisanet", etc.)
-                - "valor": número (positivo para entradas, salários ou Pix recebido; negativo para saídas, compras, pagamentos ou débitos)
-                - "data": string no formato DD/MM/AAAA
+            Texto do Extrato:
+            ${conteudoTexto}
 
-                Exemplo de formato esperado:
-                [
-                  {"descricao": "Dinheiro retirado Dizimo", "valor": -356.22, "data": "01/08/2026"},
-                  {"descricao": "Pix Recebido", "valor": 150.00, "data": "01/08/2026"}
-                ]
-                `;
+            Exemplo de formato esperado:
+            [
+              {"descricao": "Pix Recebido", "valor": 150.00, "data": "01/08/2026"},
+              {"descricao": "Dinheiro retirado Dizimo", "valor": -356.22, "data": "01/08/2026"}
+            ]
+            `;
 
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: [
-                        { inlineData: { mimeType: tipoMimeFinal, data: base64Data } },
-                        { text: promptVisual }
-                    ]
-                });
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: promptIA
+            });
 
-                if (response && response.text) {
-                    let textoResposta = response.text.trim();
-                    textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    
-                    const inicio = textoResposta.indexOf('[');
-                    const fim = textoResposta.lastIndexOf(']');
-                    if (inicio !== -1 && fim !== -1) {
-                        textoResposta = textoResposta.substring(inicio, fim + 1);
-                    }
-
-                    transacoesParaProcessar = JSON.parse(textoResposta);
+            if (response && response.text) {
+                let textoResposta = response.text.trim();
+                textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
+                
+                const inicio = textoResposta.indexOf('[');
+                const fim = textoResposta.lastIndexOf(']');
+                if (inicio !== -1 && fim !== -1) {
+                    textoResposta = textoResposta.substring(inicio, fim + 1);
                 }
-            } catch (errIA) {
-                console.error("Erro ao processar documento com Gemini:", errIA);
+
+                transacoesParaProcessar = JSON.parse(textoResposta);
             }
-        } else {
-            // Ficheiros de texto ou OFX
-            const conteudoTexto = req.file.buffer.toString('utf8');
-            try {
-                const dadosParseados = ofx.parse(conteudoTexto);
-                const listaOFX = dadosParseados.bankTransactionList || [];
-                transacoesParaProcessar = listaOFX.map(t => ({
-                    descricao: t.MEMO || t.NAME || 'Transação Bancária',
-                    valor: parseFloat((t.TRNAMT || '0').replace(',', '.')),
-                    data: t.DTPOSTED ? `${t.DTPOSTED.substring(6,8)}/${t.DTPOSTED.substring(4,6)}/${t.DTPOSTED.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
-                }));
-            } catch (e) {
-                const promptTexto = `Analise este texto de extrato e retorne um array JSON puro com "descricao", "valor" e "data" (DD/MM/AAAA):\n${conteudoTexto}`;
-                const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: promptTexto
-                });
-                if (response && response.text) {
-                    let textoResposta = response.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const inicio = textoResposta.indexOf('[');
-                    const fim = textoResposta.lastIndexOf(']');
-                    if (inicio !== -1 && fim !== -1) {
-                        textoResposta = textoResposta.substring(inicio, fim + 1);
-                    }
-                    transacoesParaProcessar = JSON.parse(textoResposta);
-                }
-            }
+        } catch (errIA) {
+            console.error("Erro na IA ao ler extrato:", errIA);
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
