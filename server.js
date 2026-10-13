@@ -283,7 +283,9 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota Universal de Importação de Extratos (Com tratamento de erro seguro para PDF)
+const pdfParse = require('pdf-parse');
+
+// Rota Universal de Importação de Extratos (.OFX e .PDF com Leitura de Texto Segura)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -294,38 +296,43 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         const nomeArquivo = req.file.originalname.toLowerCase();
         let transacoesParaProcessar = [];
 
-        // 1. CASO SEJA PDF (Processado via Gemini AI)
+        // 1. CASO SEJA PDF (Extrai o texto com pdf-parse e envia o texto limpo para o Gemini)
         if (mimeType.includes('pdf') || nomeArquivo.endsWith('.pdf')) {
             try {
-                const pdfBase64 = req.file.buffer.toString('base64');
+                const pdfData = await pdfParse(req.file.buffer);
+                const textoExtrato = pdfData.text;
+
+                if (!textoExtrato || textoExtrato.trim().length < 10) {
+                    return res.status(400).json({ erro: "O PDF parece estar vazio ou escaneado como imagem. Tente exportar o extrato em formato texto/OFX." });
+                }
+
                 const promptPDF = `
-                Analise este extrato bancário em PDF. Extraia todas as transações financeiras e retorne estritamente um array JSON puro, sem crases, sem markdown e sem texto adicional.
+                Você é um extrator financeiro de precisão. Analise o texto abaixo extraído de um extrato bancário em PDF.
+                Extraia todas as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown e sem texto adicional).
                 Cada item do array deve ter exatamente estas chaves:
-                - "descricao": string com o nome da transação
-                - "valor": número (positivo para entradas/recebimentos, negativo para saídas/gastos)
+                - "descricao": string com o nome ou histórico da transação
+                - "valor": número (positivo para entradas/recebimentos/Pix recebido, negativo para saídas/gastos/compras)
                 - "data": string no formato DD/MM/AAAA
+
+                Texto do Extrato:
+                ${textoExtrato}
 
                 Exemplo de formato esperado:
                 [
-                  {"descricao": "Pix Recebido", "valor": 100.00, "data": "12/10/2026"},
-                  {"descricao": "Supermercado", "valor": -50.00, "data": "12/10/2026"}
+                  {"descricao": "Pix Recebido Joao", "valor": 100.00, "data": "12/10/2026"},
+                  {"descricao": "Supermercado Moranguinho", "valor": -50.00, "data": "12/10/2026"}
                 ]
                 `;
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
-                    contents: [
-                        { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
-                        { text: promptPDF }
-                    ]
+                    contents: promptPDF
                 });
 
                 if (response && response.text) {
                     let textoResposta = response.text.trim();
-                    // Remove qualquer marcação de bloco de código markdown se o modelo insistir em colocar
                     textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
                     
-                    // Garante que pega apenas do primeiro colchete '[' até o último ']'
                     const inicio = textoResposta.indexOf('[');
                     const fim = textoResposta.lastIndexOf(']');
                     if (inicio !== -1 && fim !== -1) {
@@ -335,8 +342,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                     transacoesParaProcessar = JSON.parse(textoResposta);
                 }
             } catch (errPDF) {
-                console.error("❌ Erro detalhado ao ler PDF com Gemini:", errPDF.message || errPDF);
-                return res.status(400).json({ erro: "Não foi possível extrair os dados deste PDF. Verifique se o PDF contém texto legível." });
+                console.error("❌ Erro ao processar PDF:", errPDF.message || errPDF);
+                return res.status(400).json({ erro: "Não foi possível ler as transações deste PDF. Tente enviar o arquivo em formato OFX." });
             }
         } 
         // 2. CASO SEJA OFX / TEXTO / CSV

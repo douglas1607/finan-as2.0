@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.4.0",
     "ofx-data-extractor": "^1.5.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.23.1"
   }
 }
