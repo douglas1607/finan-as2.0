@@ -432,7 +432,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
     }
 });
 
-// NOVA ROTA: Resumo Inteligente do Mês feito pela IA (Estilo Pierre)
+// NOVA ROTA: Resumo Inteligente do Mês feito pela IA
 app.get('/api/resumo-ia', autenticarToken, async (req, res) => {
     try {
         const resultTransacoes = await pool.query(
@@ -617,12 +617,31 @@ async function iniciarBotWhatsApp() {
         const remetenteRaw = msg.key.remoteJid;
         const numeroRemetente = remetenteRaw.replace('@s.whatsapp.net', '').replace('@g.us', '').slice(-8);
 
-        const textoMensagem = msg.message.conversation || 
+        const textoMensagem = (msg.message.conversation || 
                              msg.message.extendedTextMessage?.text || 
-                             msg.message.imageMessage?.caption;
+                             msg.message.imageMessage?.caption || '').trim();
 
         if (textoMensagem) {
-            console.log(`💬 Mensagem recebida do WhatsApp (${remetenteRaw}): "${textoMensagem}"`);
+            // ==========================================
+            // FILTRO DE GATILHO (EVITA CONVERSAS NORMAIS)
+            // ==========================================
+            const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei'];
+            const temGatilho = gatilhos.some(g => textoMensagem.toLowerCase().startsWith(g));
+
+            if (!temGatilho) {
+                // Ignora qualquer mensagem que não comece com os comandos/gatilhos
+                return;
+            }
+
+            // Remove o gatilho do texto antes de enviar para a IA processar
+            let textoLimpo = textoMensagem;
+            gatilhos.forEach(g => {
+                if (textoLimpo.toLowerCase().startsWith(g)) {
+                    textoLimpo = textoLimpo.slice(g.length).trim();
+                }
+            });
+
+            console.log(`💬 Comando de gasto recebido do WhatsApp (${remetenteRaw}): "${textoLimpo}"`);
 
             try {
                 // Busca o usuário no banco pelo número de telefone cadastrado
@@ -636,7 +655,7 @@ async function iniciarBotWhatsApp() {
 
                 const promptIA = `
                 Analise o texto abaixo enviado por um usuário no WhatsApp e verifique se é um registro de gasto ou entrada financeira.
-                Texto: "${textoMensagem}"
+                Texto: "${textoLimpo}"
 
                 Se for um gasto ou receita, responda APENAS um JSON no formato:
                 {"eGasto": true, "descricao": "nome curto do gasto", "valor": 00.00, "tipo": "saida"} 
