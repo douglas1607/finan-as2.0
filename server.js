@@ -291,17 +291,17 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         }
 
         const conteudoTexto = req.file.buffer.toString('utf8');
-        console.log("📄 Conteúdo recebido no servidor (primeiros 300 caracteres):", conteudoTexto.substring(0, 300));
+        console.log("📄 Conteúdo recebido no servidor (tamanho):", conteudoTexto.length);
 
         let transacoesParaProcessar = [];
 
         try {
             const promptIA = `
-            Você é um extrator financeiro de alta precisão. Analise o texto deste extrato abaixo (que pode ser do Mercado Pago ou outro banco).
-            Extraia TODAS as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
+            Você é um extrator financeiro de alta precisão. Analise o texto deste extrato bancário abaixo.
+            Extraia TODAS as transações financeiras (entradas e saídas) e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
             Cada item do array deve ter exatamente estas chaves:
             - "descricao": string com o nome/histórico exato da transação
-            - "valor": número (positivo para entradas/Pix recebido/salário, negativo para saídas/compras/pagamentos)
+            - "valor": número (positivo para entradas/Pix recebido/rendimentos, negativo para saídas/compras/pagamentos/Pix enviado)
             - "data": string no formato DD/MM/AAAA
 
             Texto do Extrato:
@@ -309,8 +309,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
             Exemplo de formato esperado:
             [
-              {"descricao": "Pix Recebido", "valor": 150.00, "data": "01/08/2026"},
-              {"descricao": "Dinheiro retirado", "valor": -356.22, "data": "01/08/2026"}
+              {"descricao": "Pix Recebido", "valor": 863.86, "data": "05/08/2026"},
+              {"descricao": "Dinheiro retirado Dizimo", "valor": -356.22, "data": "01/08/2026"}
             ]
             `;
 
@@ -319,7 +319,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 contents: promptIA
             });
 
-            console.log("🤖 RESPOSTA PURA DA IA:", response ? response.text : "Sem resposta");
+            console.log("🤖 RESPOSTA DA IA:", response ? response.text : "Sem resposta");
 
             if (response && response.text) {
                 let textoResposta = response.text.trim();
@@ -335,6 +335,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             }
         } catch (errIA) {
             console.error("❌ Erro na IA ao ler extrato:", errIA);
+            return res.status(400).json({ erro: 'Erro ao interpretar o texto do extrato com a Inteligência Artificial.' });
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
