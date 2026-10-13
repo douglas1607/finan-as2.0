@@ -283,41 +283,49 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota Universal de Importação de Extratos (.OFX e .PDF com Gemini)
+// Rota Universal de Importação (Aceita OFX, CSV, TXT e o texto do PDF vindo do Frontend)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ erro: 'Nenhum arquivo de extrato enviado.' });
         }
 
-        const mimeType = req.file.mimetype;
-        const nomeArquivo = req.file.originalname.toLowerCase();
+        const conteudoTexto = req.file.buffer.toString('utf8');
         let transacoesParaProcessar = [];
 
-        // 1. CASO SEJA PDF (Enviado em base64 para o Gemini processar)
-        if (mimeType.includes('pdf') || nomeArquivo.endsWith('.pdf')) {
+        // Tenta ler primeiro como OFX estruturado
+        try {
+            const dadosParseados = ofx.parse(conteudoTexto);
+            const listaOFX = dadosParseados.bankTransactionList || [];
+            transacoesParaProcessar = listaOFX.map(t => ({
+                descricao: t.MEMO || t.NAME || 'Transação Bancária',
+                valor: parseFloat((t.TRNAMT || '0').replace(',', '.')),
+                data: t.DTPOSTED ? `${t.DTPOSTED.substring(6,8)}/${t.DTPOSTED.substring(4,6)}/${t.DTPOSTED.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
+            }));
+        } catch (e) {
+            // Se não for OFX estruturado (ex: o texto extraído do PDF ou TXT/CSV), usa a Inteligência Artificial do Gemini para ler o conteúdo!
             try {
-                const pdfBase64 = req.file.buffer.toString('base64');
-                const promptPDF = `
-                Analise este extrato bancário em PDF. Extraia todas as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown e sem texto adicional).
+                const promptIA = `
+                Você é um extrator financeiro inteligente. Analise o texto deste extrato bancário abaixo.
+                Extraia TODAS as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
                 Cada item do array deve ter exatamente estas chaves:
-                - "descricao": string com o nome da transação
-                - "valor": número (positivo para entradas/recebimentos, negativo para saídas/gastos)
+                - "descricao": string clara com o nome da transação
+                - "valor": número (positivo para entradas/Pix recebido/salário, negativo para saídas/compras/pagamentos)
                 - "data": string no formato DD/MM/AAAA
+
+                Texto do Extrato:
+                ${conteudoTexto}
 
                 Exemplo de formato esperado:
                 [
-                  {"descricao": "Pix Recebido", "valor": 100.00, "data": "12/10/2026"},
-                  {"descricao": "Supermercado", "valor": -50.00, "data": "12/10/2026"}
+                  {"descricao": "Pix Recebido", "valor": 150.00, "data": "10/10/2026"},
+                  {"descricao": "Supermercado Moranguinho", "valor": -85.50, "data": "11/10/2026"}
                 ]
                 `;
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
-                    contents: [
-                        { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
-                        { text: promptPDF }
-                    ]
+                    contents: promptIA
                 });
 
                 if (response && response.text) {
@@ -332,53 +340,17 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
                     transacoesParaProcessar = JSON.parse(textoResposta);
                 }
-            } catch (errPDF) {
-                console.error("❌ Erro ao processar PDF com Gemini:", errPDF.message || errPDF);
-                return res.status(400).json({ erro: "Não foi possível extrair os dados deste PDF. Tente enviar o formato OFX." });
-            }
-        } 
-        // 2. CASO SEJA OFX / TEXTO / CSV
-        else {
-            const conteudoTexto = req.file.buffer.toString('utf8');
-            try {
-                const dadosParseados = ofx.parse(conteudoTexto);
-                const listaOFX = dadosParseados.bankTransactionList || [];
-                transacoesParaProcessar = listaOFX.map(t => ({
-                    descricao: t.MEMO || t.NAME || 'Transação Bancária',
-                    valor: parseFloat((t.TRNAMT || '0').replace(',', '.')),
-                    data: t.DTPOSTED ? `${t.DTPOSTED.substring(6,8)}/${t.DTPOSTED.substring(4,6)}/${t.DTPOSTED.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
-                }));
-            } catch (e) {
-                const regexTransacao = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
-                let match;
-                while ((match = regexTransacao.exec(conteudoTexto)) !== null) {
-                    const bloco = match[1];
-                    const getTag = (t) => {
-                        const m = new RegExp(`<${t}>(.*?)(?:<|<\\/|\n|\r)`, 'i').exec(bloco);
-                        return m ? m[1].trim() : '';
-                    };
-                    const trnAmt = getTag('TRNAMT');
-                    const dtPosted = getTag('DTPOSTED');
-                    const memo = getTag('MEMO') || getTag('NAME') || 'Transação Bancária';
-
-                    if (trnAmt) {
-                        transacoesParaProcessar.push({
-                            descricao: memo,
-                            valor: parseFloat(trnAmt.replace(',', '.')),
-                            data: dtPosted.length >= 8 ? `${dtPosted.substring(6,8)}/${dtPosted.substring(4,6)}/${dtPosted.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
-                        });
-                    }
-                }
+            } catch (errIA) {
+                console.error("Erro na IA ao ler extrato:", errIA);
             }
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
-            return res.status(400).json({ erro: 'Nenhuma transação válida foi encontrada no arquivo enviado.' });
+            return res.status(400).json({ erro: 'Não foi possível identificar transações válidas neste arquivo.' });
         }
 
         let importadosCount = 0;
 
-        // 3. SALVA NO BANCO DE DADOS E CATEGORIZA
         for (let item of transacoesParaProcessar) {
             const valorNum = parseFloat(item.valor);
             const descricao = item.descricao || 'Movimentação Bancária';
