@@ -699,18 +699,19 @@ body.login-page {
     position: relative;
     display: flex;
     align-items: center;
+    min-height: 52px;
 }
 
 .ticker-track {
     display: flex;
-    gap: 28px;
+    gap: 20px;
     white-space: nowrap;
     animation: roletaTicker 25s linear infinite;
     padding-left: 20px;
     width: max-content;
+    will-change: transform;
 }
 
-/* A pausa no hover funciona APENAS em desktop com mouse (evita travar no celular) */
 @media (hover: hover) and (pointer: fine) {
     .ticker-carousel-container:hover .ticker-track {
         animation-play-state: paused;
@@ -735,8 +736,8 @@ body.login-page {
 .neon-pink { color: #ff6b6b; font-weight: 700; }
 
 @keyframes roletaTicker {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-50%, 0, 0); }
 }
 
 /* RESPONSIVIDADE MOBILE */
