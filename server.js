@@ -127,11 +127,11 @@ async function chamarComRetry(prompt) {
             } catch (err) {
                 ultimoErro = err;
                 console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}): ${err.message}`);
-                
+
                 if (err.message.includes('503') || err.message.includes('UNAVAILABLE') || err.message.includes('429')) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
-                    break; 
+                    break;
                 }
             }
         }
@@ -369,7 +369,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             if (response && response.text) {
                 let textoResposta = response.text.trim();
                 textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
-                
+
                 const inicio = textoResposta.indexOf('[');
                 const fim = textoResposta.lastIndexOf(']');
                 if (inicio !== -1 && fim !== -1) {
@@ -438,8 +438,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             msgFinal += ` ⚠️ Atenção: Identificamos ${possiveisDuplicadas.length} cobranças repetidas no extrato.`;
         }
 
-        return res.json({ 
-            sucesso: true, 
+        return res.json({
+            sucesso: true,
             mensagem: msgFinal,
             duplicadas: possiveisDuplicadas
         });
@@ -642,9 +642,9 @@ async function iniciarBotWhatsApp() {
             const numeroRemetente = jidRemetenteReal.replace(/[^0-9]/g, '');
 
             const textoMensagem = (
-                msg.message.conversation || 
-                msg.message.extendedTextMessage?.text || 
-                msg.message.imageMessage?.caption || 
+                msg.message.conversation ||
+                msg.message.extendedTextMessage?.text ||
+                msg.message.imageMessage?.caption ||
                 ''
             ).trim();
 
@@ -653,7 +653,7 @@ async function iniciarBotWhatsApp() {
             // Verificação flexível de Gatilhos
             const textoMinusculo = textoMensagem.toLowerCase();
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei'];
-            
+
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
 
             if (!temGatilho) return; // Ignora conversas normais
@@ -671,23 +671,34 @@ async function iniciarBotWhatsApp() {
             // ==========================================
             // IDENTIFICAÇÃO INTELIGENTE DO USUÁRIO PELO TELEFONE
             // ==========================================
-            let idUsuarioFinal = 1; // Padrão de segurança
+            let idUsuarioFinal = null; // Sem fallback cego! Exige vínculo real.
 
             try {
-                const sufixoTel = numeroRemetente.slice(-8);
+                const numeroLimpo = numeroRemetente.replace(/\D/g, '');
+                const sufixoTel = numeroLimpo.slice(-9); // Pega os últimos 9 dígitos para tolerar variações de DDD/55
+
+                // Busca exata ou por trecho final no banco
                 const buscaUser = await pool.query(
-                    `SELECT id FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
-                    [`%${sufixoTel}%`]
+                    `SELECT id, nome, telefone FROM usuarios WHERE telefone = $1 OR telefone LIKE $2 OR telefone LIKE $3 LIMIT 1`,
+                    [numeroLimpo, `%${sufixoTel}%`, `%${numeroLimpo}%`]
                 );
 
                 if (buscaUser.rows.length > 0) {
                     idUsuarioFinal = buscaUser.rows[0].id;
-                    console.log(`👤 Usuário identificado no banco: ID ${idUsuarioFinal}`);
+                    console.log(`👤 Usuário identificado no banco: ID ${idUsuarioFinal} (${buscaUser.rows[0].nome})`);
                 } else {
-                    console.warn(`⚠️ Telefone ${numeroRemetente} não vinculado. Usando usuário ID 1 como fallback.`);
+                    console.warn(`⚠️ Telefone ${numeroLimpo} não encontrado em nenhum usuário cadastrado.`);
                 }
             } catch (errUser) {
                 console.error("Erro ao buscar usuário por telefone:", errUser.message);
+            }
+
+            // Se o usuário não estiver vinculado, avisa no WhatsApp e interrompe para não herdar seu ID
+            if (!idUsuarioFinal) {
+                await sock.sendMessage(remetenteRaw, {
+                    text: `⚠️ *Número não vinculado!*\nSeu número do WhatsApp (${numeroRemetente}) ainda não está cadastrado em nenhuma conta do FinancIA.\n\nAcesse o painel web, vá em *⚙️ Vincular Meu WhatsApp* e salve seu número para começar a registrar gastos!`
+                });
+                return;
             }
 
             const promptIA = `
@@ -739,9 +750,9 @@ async function iniciarBotWhatsApp() {
                         `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
                         [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
                     );
-                    
-                    await sock.sendMessage(remetenteRaw, { 
-                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
+
+                    await sock.sendMessage(remetenteRaw, {
+                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 } else {
                     const descNorm = resultado.descricao.toLowerCase();
@@ -756,8 +767,8 @@ async function iniciarBotWhatsApp() {
                         [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
                     );
 
-                    await sock.sendMessage(remetenteRaw, { 
-                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
+                    await sock.sendMessage(remetenteRaw, {
+                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 }
             }
