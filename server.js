@@ -21,16 +21,12 @@ app.use(cors({
 
 app.use(express.json());
 
-// ==========================================================
-// SERVIR ARQUIVOS ESTÁTICOS E PÁGINA INICIAL (PWA / FRONTEND)
-// ==========================================================
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Inicialização segura da IA com a chave explícita
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -103,6 +99,24 @@ async function inicializarTabelas() {
     }
 }
 inicializarTabelas();
+
+// Função auxiliar para tentar chamar a IA com novas tentativas caso dê erro temporário de alta demanda (503)
+async function chamarComRetry(prompt, maxTentativas = 3) {
+    for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-3.8-flash',
+                contents: prompt
+            });
+            return response;
+        } catch (err) {
+            console.warn(`⚠️ Tentativa ${tentativa} falhou: ${err.message}`);
+            if (tentativa === maxTentativas) throw err;
+            // Aguarda 2 segundos antes de tentar novamente
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    }
+}
 
 function autenticarToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -254,7 +268,7 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
             - Compras: Vestuário (roupas, sapatos, tênis, bijuterias), eletrônicos, celulares, computadores, bicicletas, presentes, itens de uso pessoal e compras diversas.
             Responda APENAS com uma destas 5 palavras exatas sem explicações: Mercado, Casa, Lazer, Transporte ou Compras.`;
 
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            const response = await chamarComRetry(prompt);
             if (response && response.text) {
                 const resp = response.text.trim();
                 const validas = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'];
@@ -284,7 +298,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação protegida com modelo gemini-2.0-flash atualizado
+// Rota de Importação protegida usando o modelo gemini-3.8-flash com sistema de retry automático
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -308,10 +322,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             ${conteudoTexto}
             `;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: promptIA
-            });
+            const response = await chamarComRetry(promptIA);
 
             console.log("🤖 IA concluiu a análise do extrato com sucesso.");
 
