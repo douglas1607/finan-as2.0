@@ -1108,7 +1108,7 @@ async function importarArquivoOFX(input) {
                 if (linhaAtual) textoCompleto += linhaAtual + '\n';
             }
 
-            console.log("📄 TEXTO EXTRAÍDO DO PDF NO NAVEGADOR:\n", textoCompleto);
+            
 
             if (!textoCompleto.trim()) {
                 alert("O PDF está vazio ou não contém texto legível.");
