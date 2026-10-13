@@ -335,7 +335,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         try {
             const promptIA = `
             Analise o extrato bancário abaixo e retorne APENAS um array JSON válido contendo as transações.
-            Cada objeto do array deve ter exatamente estas chaves:
+            Cada objeto do array deve have exatamente estas chaves:
             - "descricao": string com o nome da transação
             - "valor": número (positivo para entradas/Pix recebido, negativo para saídas/compras/pagamentos/Pix enviado)
             - "data": string no formato DD/MM/AAAA
@@ -612,10 +612,14 @@ async function iniciarBotWhatsApp() {
 
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg.message) return;
 
         const remetenteRaw = msg.key.remoteJid;
-        const numeroRemetente = remetenteRaw.replace('@s.whatsapp.net', '').replace('@g.us', '').slice(-8);
+        const eGrupo = remetenteRaw.endsWith('@g.us');
+
+        // Identifica corretamente o remetente em grupos ou chat privado
+        const jidRemetenteReal = eGrupo ? (msg.key.participant || remetenteRaw) : remetenteRaw;
+        const numeroRemetente = jidRemetenteReal.replace(/[^0-9]/g, '').slice(-8);
 
         const textoMensagem = (msg.message.conversation || 
                              msg.message.extendedTextMessage?.text || 
@@ -641,17 +645,25 @@ async function iniciarBotWhatsApp() {
                 }
             });
 
-            console.log(`💬 Comando de gasto recebido do WhatsApp (${remetenteRaw}): "${textoLimpo}"`);
+            console.log(`💬 Comando financeiro recebido de ${numeroRemetente} (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
 
             try {
-                // Busca o usuário no banco pelo número de telefone cadastrado
+                // Busca o usuário pelo telefone no banco ou usa o primeiro usuário como padrão (ID 1)
+                let idUsuarioFinal = 1;
+
                 const buscador = await pool.query(
                     `SELECT id, nome FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
                     [`%${numeroRemetente}%`]
                 );
 
-                const usuarioEncontrado = buscador.rows[0];
-                const idUsuarioFinal = usuarioEncontrado ? usuarioEncontrado.id : 1; // Fallback para ID 1 se não encontrar
+                if (buscador.rows.length > 0) {
+                    idUsuarioFinal = buscador.rows[0].id;
+                } else {
+                    const primeiroUser = await pool.query(`SELECT id FROM usuarios ORDER BY id ASC LIMIT 1`);
+                    if (primeiroUser.rows.length > 0) {
+                        idUsuarioFinal = primeiroUser.rows[0].id;
+                    }
+                }
 
                 const promptIA = `
                 Analise o texto abaixo enviado por um usuário no WhatsApp e verifique se é um registro de gasto ou entrada financeira.
