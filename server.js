@@ -284,7 +284,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação processando o texto extraído do extrato
+// Rota de Importação protegida (sem exibição de dados sensíveis no console)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -292,7 +292,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         }
 
         const conteudoTexto = req.file.buffer.toString('utf8');
-        console.log("📄 Conteúdo recebido no servidor (tamanho):", conteudoTexto.length);
+        console.log("📄 Arquivo de extrato recebido para processamento.");
 
         let transacoesParaProcessar = [];
 
@@ -313,7 +313,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 contents: promptIA
             });
 
-            console.log("🤖 RESPOSTA DA IA:", response ? response.text : "Sem resposta");
+            console.log("🤖 IA concluiu a análise do extrato com sucesso.");
 
             if (response && response.text) {
                 let textoResposta = response.text.trim();
@@ -328,7 +328,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 transacoesParaProcessar = JSON.parse(textoResposta);
             }
         } catch (errIA) {
-            console.error("❌ Erro detalhado na IA ao ler extrato:", errIA);
+            console.error("❌ Erro ao processar extrato via IA:", errIA.message);
             return res.status(400).json({ erro: `Erro ao interpretar com a IA: ${errIA.message}` });
         }
 
@@ -379,7 +379,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         });
 
     } catch (err) {
-        console.error("Erro geral ao processar extrato:", err);
+        console.error("Erro geral ao processar extrato:", err.message);
         return res.status(500).json({ erro: 'Erro interno ao processar o extrato enviado.' });
     }
 });
