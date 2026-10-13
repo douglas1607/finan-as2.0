@@ -284,7 +284,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação protegida (sem exibição de dados sensíveis no console)
+// Rota de Importação protegida com modelo gemini-2.0-flash atualizado
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -309,7 +309,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-1.5-flash',
+                model: 'gemini-2.0-flash',
                 contents: promptIA
             });
 
