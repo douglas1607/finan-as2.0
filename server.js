@@ -254,7 +254,7 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
             - Compras: Vestuário (roupas, sapatos, tênis, bijuterias), eletrônicos, celulares, computadores, bicicletas, presentes, itens de uso pessoal e compras diversas.
             Responda APENAS com uma destas 5 palavras exatas sem explicações: Mercado, Casa, Lazer, Transporte ou Compras.`;
 
-            const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+            const response = await ai.models.generateContent({ model: 'gemini-1.5-flash', contents: prompt });
             if (response && response.text) {
                 const resp = response.text.trim();
                 const validas = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'];
@@ -309,7 +309,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-1.5-flash',
                 contents: promptIA
             });
 
