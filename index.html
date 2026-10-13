@@ -56,9 +56,6 @@
             <button class="btn-nav"
                 style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10B981; color: #10B981; font-weight: 600;"
                 onclick="abrirModalWhatsapp()">📱 Conectar WhatsApp</button>
-            <button class="btn-nav"
-                style="background: rgba(0, 210, 255, 0.15); border: 1px solid #00d2ff; color: #00d2ff; font-weight: 600;"
-                onclick="abrirModalVincularTel()">⚙️ Vincular Meu WhatsApp</button>
             <button class="btn-nav btn-privacy" onclick="alternarModoPrivacidade()">👁️ Privado</button>
             <a href="#" class="btn-nav btn-logout" onclick="fazerLogout(event)">Sair</a>
         </nav>
@@ -305,15 +302,14 @@
     </div>
 
     <!-- ========================================================== -->
-    <!-- MODAL DE CONEXÃO DO WHATSAPP (SAAS MULTI-USUÁRIO)          -->
+    <!-- MODAL DE CONEXÃO DO WHATSAPP EXCLUSIVO POR PERFIL          -->
     <!-- ========================================================== -->
     <div id="modalWhatsapp"
         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(5px); z-index:9999; align-items:center; justify-content:center;">
         <div
             style="background:#111827; border:1px solid #10B981; border-radius:16px; padding:28px; max-width:420px; width:90%; text-align:center; color:#fff; box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);">
-            <h3 style="color:#10B981; margin-bottom:8px; font-size:1.3rem;">📱 Conectar WhatsApp no FinancIA</h3>
-            <p style="font-size:13px; color:#9CA3AF; margin-bottom:20px; line-height:1.4;">Escaneie o QR Code abaixo com
-                o WhatsApp do seu celular para ativar o assistente e registrar gastos por mensagem.</p>
+            <h3 style="color:#10B981; margin-bottom:8px; font-size:1.3rem;">📱 Conectar Seu WhatsApp</h3>
+            <p style="font-size:13px; color:#9CA3AF; margin-bottom:20px; line-height:1.4;">Escaneie o QR Code abaixo com o WhatsApp do seu celular para vincular este perfil e registrar gastos por mensagem.</p>
 
             <div id="containerQrCode"
                 style="min-height:230px; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#1F2937; border-radius:12px; padding:15px; border:1px dashed rgba(16, 185, 129, 0.3);">
@@ -323,32 +319,11 @@
             </div>
 
             <button onclick="fecharModalWhatsapp()"
-                style="margin-top:20px; width:100%; padding:12px; background:#374151; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600; transition:0.2s;">Fechar
-                Modal</button>
+                style="margin-top:20px; width:100%; padding:12px; background:#374151; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">Fechar Modal</button>
         </div>
     </div>
 
-    <!-- ========================================================== -->
-    <!-- MODAL PARA VINCULAR TELEFONE DO WHATSAPP AO PERFIL         -->
-    <!-- ========================================================== -->
-    <div id="modalVincularTel"
-        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); backdrop-filter:blur(5px); z-index:9999; align-items:center; justify-content:center;">
-        <div
-            style="background:#111827; border:1px solid #00d2ff; border-radius:16px; padding:28px; max-width:420px; width:90%; text-align:center; color:#fff; box-shadow: 0 10px 25px rgba(0, 210, 255, 0.2);">
-            <h3 style="color:#00d2ff; margin-bottom:8px; font-size:1.3rem;">⚙️ Vincular WhatsApp ao Perfil</h3>
-            <p style="font-size:13px; color:#9CA3AF; margin-bottom:20px; line-height:1.4;">Digite o seu número de WhatsApp com o DDD (ex: 88999999999) para que seus comandos no chat venham direto para este painel.</p>
-
-            <input type="text" id="inputTelUsuario" placeholder="Ex: 88999999999"
-                style="width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px; font-size: 1rem; margin-bottom: 15px; text-align: center;" />
-
-            <button onclick="salvarTelefonePerfil()"
-                style="width:100%; padding:12px; background:#00d2ff; color:#0b2d21; border:none; border-radius:8px; cursor:pointer; font-weight:700; transition:0.2s; margin-bottom: 10px;">Salvar Número</button>
-            <button onclick="fecharModalVincularTel()"
-                style="width:100%; padding:10px; background:#374151; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:600;">Cancelar</button>
-        </div>
-    </div>
-
-    <!-- Script de controle dos Modais e Vinculação -->
+    <!-- Script de controle do Modal do WhatsApp -->
     <script>
         let intervaloQrModal = null;
 
@@ -361,45 +336,6 @@
         function fecharModalWhatsapp() {
             document.getElementById('modalWhatsapp').style.display = 'none';
             if (intervaloQrModal) clearInterval(intervaloQrModal);
-        }
-
-        function abrirModalVincularTel() {
-            document.getElementById('modalVincularTel').style.display = 'flex';
-        }
-
-        function fecharModalVincularTel() {
-            document.getElementById('modalVincularTel').style.display = 'none';
-        }
-
-        async function salvarTelefonePerfil() {
-            const telInput = document.getElementById('inputTelUsuario').value.replace(/\D/g, '');
-            if (!telInput) {
-                alert("Digite um número de WhatsApp válido.");
-                return;
-            }
-
-            try {
-                const token = localStorage.getItem('financia_token');
-                const res = await fetch('https://finan-as2-0.onrender.com/api/usuario/telefone', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ telefone: telInput })
-                });
-
-                const data = await res.json();
-                if (res.ok) {
-                    alert("WhatsApp vinculado com sucesso ao seu perfil!");
-                    fecharModalVincularTel();
-                } else {
-                    alert(data.erro || "Erro ao vincular telefone.");
-                }
-            } catch (err) {
-                console.error("Erro ao salvar telefone:", err);
-                alert("Erro de conexão com o servidor.");
-            }
         }
 
         async function carregarQrCodeWhatsapp() {
@@ -418,7 +354,7 @@
                 const txtEl = document.getElementById('statusQrTexto');
 
                 if (data.status === 'conectado') {
-                    txtEl.innerText = '✅ Seu WhatsApp já está conectado e pronto para receber gastos!';
+                    txtEl.innerText = '✅ Seu WhatsApp já está conectado neste perfil!';
                     txtEl.style.color = '#10B981';
                     txtEl.style.display = 'block';
                     imgEl.style.display = 'none';

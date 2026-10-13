@@ -10,6 +10,7 @@ const multer = require('multer');
 const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCodeLib = require('qrcode');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,16 +24,12 @@ app.use(cors({
 
 app.use(express.json());
 
-// ==========================================================
-// SERVIR ARQUIVOS ESTÁTICOS E PÁGINA INICIAL (PWA / FRONTEND)
-// ==========================================================
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Inicialização segura da IA com a chave
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -99,7 +96,6 @@ async function inicializarTabelas() {
             );
         `);
         await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
-        await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefone VARCHAR(50);`);
         console.log("✅ Tabelas PostgreSQL verificadas/criadas com sucesso!");
     } catch (e) {
         console.error("Erro ao inicializar tabelas:", e.message);
@@ -107,8 +103,8 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Nomes corrigidos para a nova SDK @google/genai
 const MODELOS_DISPONIVEIS = [
+    'gemini-3.8-flash',
     'gemini-2.5-flash',
     'gemini-2.0-flash'
 ];
@@ -127,11 +123,10 @@ async function chamarComRetry(prompt) {
             } catch (err) {
                 ultimoErro = err;
                 console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}): ${err.message}`);
-
                 if (err.message.includes('503') || err.message.includes('UNAVAILABLE') || err.message.includes('429')) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
-                    break;
+                    break; 
                 }
             }
         }
@@ -151,15 +146,14 @@ function autenticarToken(req, res, next) {
     });
 }
 
-// Rotas de Autenticação
+// Autenticação
 app.post('/api/cadastrar', async (req, res) => {
-    const { nome, email, senha, telefone } = req.body;
+    const { nome, email, senha } = req.body;
     if (!nome || !email || !senha) return res.status(400).json({ erro: "Preencha todos os campos." });
 
     try {
         const hashSenha = bcrypt.hashSync(senha, 8);
-        const telLimpo = telefone ? telefone.replace(/\D/g, '') : '';
-        await pool.query(`INSERT INTO usuarios (nome, email, senha, telefone) VALUES ($1, $2, $3, $4)`, [nome, email, hashSenha, telLimpo]);
+        await pool.query(`INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)`, [nome, email, hashSenha]);
         res.status(201).json({ mensagem: "Conta criada com sucesso!" });
     } catch (err) {
         res.status(400).json({ erro: "E-mail já cadastrado no sistema." });
@@ -196,25 +190,7 @@ app.post('/api/esqueci-senha', async (req, res) => {
     }
 });
 
-// NOVA ROTA: Vincular/Atualizar Telefone pelo Painel Logado
-app.put('/api/usuario/telefone', autenticarToken, async (req, res) => {
-    const { telefone } = req.body;
-    if (!telefone) return res.status(400).json({ erro: "Informe o número de telefone." });
-
-    try {
-        const telLimpo = telefone.replace(/\D/g, '');
-        await pool.query(
-            `UPDATE usuarios SET telefone = $1 WHERE id = $2`,
-            [telLimpo, req.usuario.id]
-        );
-        res.json({ mensagem: "WhatsApp vinculado com sucesso ao seu perfil!" });
-    } catch (err) {
-        console.error("Erro ao atualizar telefone:", err.message);
-        res.status(500).json({ erro: "Erro ao atualizar telefone no banco de dados." });
-    }
-});
-
-// Rotas Entradas
+// Outras rotas padrão (Entradas, Aportes, Transações, Extrato, IA, Gastos Fixos, Ativos)...
 app.get('/api/entradas', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM entradas WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -240,7 +216,6 @@ app.delete('/api/entradas/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir entrada." }); }
 });
 
-// Rotas Aportes
 app.get('/api/aportes', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM aportes WHERE usuario_id = $1 ORDER BY id ASC`, [req.usuario.id]);
@@ -266,7 +241,6 @@ app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir aporte." }); }
 });
 
-// Rotas Transações / Extrato & IA
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -279,46 +253,17 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     const valorNum = parseFloat(valor);
     if (!descricao || isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
 
-    const descNorm = descricao
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
+    const descNorm = descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    let categoriaIA = "Compras";
 
-    let categoriaIA = "";
-
-    if (descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('etanol') || descNorm.includes('diesel') || descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('taxi') || descNorm.includes('pedagio') || descNorm.includes('estacionamento') || descNorm.includes('mecanico') || descNorm.includes('troca de oleo')) {
+    if (descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('pedagio')) {
         categoriaIA = 'Transporte';
-    } else if (descNorm.includes('acai') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('ifood') || descNorm.includes('pizza') || descNorm.includes('churrasco') || descNorm.includes('cerveja') || descNorm.includes('cinema') || descNorm.includes('sorvete') || descNorm.includes('sushi') || descNorm.includes('hamburguer')) {
+    } else if (descNorm.includes('acai') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('ifood') || descNorm.includes('pizza')) {
         categoriaIA = 'Lazer';
-    } else if (descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('feira') || descNorm.includes('padaria') || descNorm.includes('acougue') || descNorm.includes('hortifruti') || descNorm.includes('sacolao')) {
+    } else if (descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('feira') || descNorm.includes('padaria')) {
         categoriaIA = 'Mercado';
-    } else if (descNorm.includes('obra') || descNorm.includes('cimento') || descNorm.includes('telha') || descNorm.includes('tinta') || descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('maquina de lavar') || descNorm.includes('geladeira') || descNorm.includes('moveis')) {
+    } else if (descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) {
         categoriaIA = 'Casa';
-    } else if (descNorm.includes('roupa') || descNorm.includes('sapato') || descNorm.includes('tenis') || descNorm.includes('bicicleta') || descNorm.includes('celular') || descNorm.includes('camisa') || descNorm.includes('calca')) {
-        categoriaIA = 'Compras';
-    }
-
-    if (!categoriaIA) {
-        try {
-            const prompt = `Sua função é classificar o gasto "${descricao}" EXATAMENTE em uma das 5 categorias abaixo:
-            - Mercado: Compras em supermercados, atacadões, padarias, feiras livre, açougues, hortifruti, mantimentos e comida para preparar em casa.
-            - Casa: Contas de água, luz, internet, gás, aluguel, condomínio, materiais de construção (cimento, tintas, reformas), eletrodomésticos, móveis, utilidades domésticas e ração de pets.
-            - Lazer: Alimentação fora de casa (restaurantes, açaí, iFood, lanches, pizzas, sushi, bares, cervejas), cinema, passeios, viagens, ingressos e assinaturas como Netflix/Spotify.
-            - Transporte: Combustíveis (gasolina, etanol, diesel), corridas (Uber, 99, táxi), manutenção de veículos, pneus, mecânico, pedágio, estacionamento e passagens de ônibus/metrô.
-            - Compras: Vestuário (roupas, sapatos, tênis, bijuterias), eletrônicos, celulares, computadores, bicicletas, presentes, itens de uso pessoal e compras diversas.
-            Responda APENAS com uma destas 5 palavras exatas sem explicações: Mercado, Casa, Lazer, Transporte ou Compras.`;
-
-            const response = await chamarComRetry(prompt);
-            if (response && response.text) {
-                const resp = response.text.trim();
-                const validas = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'];
-                categoriaIA = validas.includes(resp) ? resp : 'Compras';
-            } else {
-                categoriaIA = 'Compras';
-            }
-        } catch (e) {
-            categoriaIA = 'Compras';
-        }
     }
 
     const dataHoje = new Date().toLocaleDateString('pt-BR');
@@ -338,158 +283,6 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação de Extrato + Detecção de Anomalias/Duplicadas
-app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ erro: 'Nenhum arquivo enviado.' });
-        }
-
-        const conteudoTexto = req.file.buffer.toString('utf8');
-        console.log("📄 Arquivo de extrato recebido para processamento.");
-
-        let transacoesParaProcessar = [];
-
-        try {
-            const promptIA = `
-            Analise o extrato bancário abaixo e retorne APENAS um array JSON válido contendo as transações.
-            Cada objeto do array deve ter exatamente estas chaves:
-            - "descricao": string com o nome da transação
-            - "valor": número (positivo para entradas/Pix recebido, negativo para saídas/compras/pagamentos/Pix enviado)
-            - "data": string no formato DD/MM/AAAA
-
-            Extrato:
-            ${conteudoTexto}
-            `;
-
-            const response = await chamarComRetry(promptIA);
-
-            console.log("🤖 IA concluiu a análise do extrato com sucesso.");
-
-            if (response && response.text) {
-                let textoResposta = response.text.trim();
-                textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
-
-                const inicio = textoResposta.indexOf('[');
-                const fim = textoResposta.lastIndexOf(']');
-                if (inicio !== -1 && fim !== -1) {
-                    textoResposta = textoResposta.substring(inicio, fim + 1);
-                }
-
-                transacoesParaProcessar = JSON.parse(textoResposta);
-            }
-        } catch (errIA) {
-            console.error("❌ Erro ao processar extrato via IA:", errIA.message);
-            return res.status(400).json({ erro: `Erro ao interpretar com a IA: ${errIA.message}` });
-        }
-
-        if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
-            return res.status(400).json({ erro: 'Não foi possível identificar transações válidas neste arquivo.' });
-        }
-
-        let importadosCount = 0;
-        let possiveisDuplicadas = [];
-        const conjuntoTransacoes = new Set();
-
-        for (let item of transacoesParaProcessar) {
-            const valorNum = parseFloat(item.valor);
-            const descricao = item.descricao || 'Movimentação Bancária';
-            const dataFormatada = item.data || new Date().toLocaleDateString('pt-BR');
-
-            if (isNaN(valorNum)) continue;
-
-            const chaveUnica = `${descricao.toLowerCase().trim()}_${valorNum}_${dataFormatada}`;
-            if (conjuntoTransacoes.has(chaveUnica)) {
-                possiveisDuplicadas.push(`${descricao} (R$ ${Math.abs(valorNum).toFixed(2)})`);
-            } else {
-                conjuntoTransacoes.add(chaveUnica);
-            }
-
-            if (valorNum > 0) {
-                await pool.query(
-                    'INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)',
-                    [req.usuario.id, descricao, valorNum, dataFormatada]
-                );
-            } else {
-                const valorPositivo = Math.abs(valorNum);
-                const descNorm = descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                let categoriaIA = "Compras";
-
-                if (descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('etanol') || descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('pedagio')) {
-                    categoriaIA = 'Transporte';
-                } else if (descNorm.includes('acai') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('ifood') || descNorm.includes('pizza') || descNorm.includes('cerveja') || descNorm.includes('sushi')) {
-                    categoriaIA = 'Lazer';
-                } else if (descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('feira') || descNorm.includes('padaria') || descNorm.includes('acougue')) {
-                    categoriaIA = 'Mercado';
-                } else if (descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || descNorm.includes('brisanet')) {
-                    categoriaIA = 'Casa';
-                }
-
-                await pool.query(
-                    'INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)',
-                    [req.usuario.id, descricao, valorPositivo, categoriaIA, dataFormatada]
-                );
-            }
-            importadosCount++;
-        }
-
-        let msgFinal = `✨ ${importadosCount} movimentações importadas e categorizadas com sucesso!`;
-        if (possiveisDuplicadas.length > 0) {
-            msgFinal += ` ⚠️ Atenção: Identificamos ${possiveisDuplicadas.length} cobranças repetidas no extrato.`;
-        }
-
-        return res.json({
-            sucesso: true,
-            mensagem: msgFinal,
-            duplicadas: possiveisDuplicadas
-        });
-
-    } catch (err) {
-        console.error("Erro geral ao processar extrato:", err.message);
-        return res.status(500).json({ erro: 'Erro interno ao processar o extrato enviado.' });
-    }
-});
-
-// NOVA ROTA: Resumo Inteligente do Mês feito pela IA
-app.get('/api/resumo-ia', autenticarToken, async (req, res) => {
-    try {
-        const resultTransacoes = await pool.query(
-            `SELECT categoria, SUM(valor) as total FROM transacoes WHERE usuario_id = $1 GROUP BY categoria`,
-            [req.usuario.id]
-        );
-        const resultEntradas = await pool.query(
-            `SELECT SUM(valor) as total FROM entradas WHERE usuario_id = $1`,
-            [req.usuario.id]
-        );
-
-        const gastosPorCategoria = resultTransacoes.rows;
-        const totalEntradas = resultEntradas.rows[0]?.total || 0;
-
-        if (gastosPorCategoria.length === 0) {
-            return res.json({ resumo: "Você ainda não possui movimentações registradas neste período. Importe seu extrato para gerar sua análise!" });
-        }
-
-        const promptAnalise = `
-        Aja como um assistente financeiro pessoal inteligente e amigável.
-        Analise o resumo de gastos e entradas do usuário e escreva um pequeno parágrafo motivador (máximo 3 frases) em tom consultivo:
-        - Total de Entradas: R$ ${parseFloat(totalEntradas).toFixed(2)}
-        - Gastos por Categoria: ${JSON.stringify(gastosPorCategoria)}
-
-        Dê uma dica direta e mencione em qual categoria ele mais gastou ou se ele economizou.
-        `;
-
-        const response = await chamarComRetry(promptAnalise);
-        const textoResumo = response && response.text ? response.text.trim() : "Análise não disponível no momento.";
-
-        res.json({ resumo: textoResumo });
-
-    } catch (err) {
-        console.error("Erro ao gerar resumo pela IA:", err);
-        res.status(500).json({ erro: "Erro ao gerar resumo com Inteligência Artificial." });
-    }
-});
-
-// Rotas Gastos Fixos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM gastos_fixos WHERE usuario_id = $1 AND (pago = 0 OR pago IS NULL)`, [req.usuario.id]);
@@ -525,7 +318,6 @@ app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
-// Rotas Ativos / Portfólio
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -544,11 +336,6 @@ app.post('/api/ativos', autenticarToken, async (req, res) => {
 
     const tickerLimpo = ticker.toUpperCase().trim();
     let tipoFinal = tipo || 'FIIs';
-
-    if (tipo === 'Acoes' && (tickerLimpo.endsWith('11') || tickerLimpo.endsWith('11B'))) {
-        tipoFinal = 'FIIs';
-    }
-
     const dataFinal = data_compra || new Date().toLocaleDateString('pt-BR');
 
     try {
@@ -558,7 +345,6 @@ app.post('/api/ativos', autenticarToken, async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id, mensagem: "Ativo cadastrado com sucesso!" });
     } catch (err) {
-        console.error("Erro ao cadastrar ativo:", err);
         res.status(500).json({ erro: "Erro ao cadastrar ativo no banco de dados." });
     }
 });
@@ -571,30 +357,17 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
 });
 
 // ==========================================================
-// INTEGRAÇÃO BOT WHATSAPP (BAILEYS) + QR CODE EM BASE64
+// GESTÃO MULTI-SESSÃO WHATSAPP POR USUÁRIO (BAILEYS ISOLADO)
 // ==========================================================
-let qrCodeAtualBase64 = '';
-let botStatusConexao = 'desconectado';
+const sessoesWhatsApp = {}; // Armazena { status, qr } por usuario_id
 
-// Rota para o Front-end consultar o QR Code
-app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
-    try {
-        if (botStatusConexao === 'conectado') {
-            return res.json({ status: 'conectado', mensagem: 'WhatsApp já está conectado!' });
-        }
-
-        if (!qrCodeAtualBase64) {
-            return res.json({ status: 'aguardando', mensagem: 'Iniciando gerador de QR Code... Tente em alguns segundos.' });
-        }
-
-        res.json({ status: 'pendente', qrcode: qrCodeAtualBase64 });
-    } catch (err) {
-        res.status(500).json({ erro: 'Erro ao obter QR Code.' });
+async function iniciarBotUsuario(usuarioId) {
+    if (sessoesWhatsApp[usuarioId]?.sock && sessoesWhatsApp[usuarioId]?.status === 'conectado') {
+        return; // Já está rodando
     }
-});
 
-async function iniciarBotWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    const pastaAuth = path.join(__dirname, `auth_info_usuario_${usuarioId}`);
+    const { state, saveCreds } = await useMultiFileAuthState(pastaAuth);
 
     const sock = makeWASocket({
         auth: state,
@@ -603,29 +376,30 @@ async function iniciarBotWhatsApp() {
         markOnlineOnConnect: true
     });
 
+    sessoesWhatsApp[usuarioId] = { sock, status: 'iniciando', qr: '' };
+
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            botStatusConexao = 'aguardando_qr';
-            qrCodeAtualBase64 = await QRCodeLib.toDataURL(qr);
-            console.log("🔄 Novo QR Code do WhatsApp gerado para a plataforma!");
+            sessoesWhatsApp[usuarioId].status = 'aguardando_qr';
+            sessoesWhatsApp[usuarioId].qr = await QRCodeLib.toDataURL(qr);
+            console.log(`🔄 QR Code gerado para o Usuário ID ${usuarioId}`);
         }
 
         if (connection === 'close') {
-            botStatusConexao = 'desconectado';
-            qrCodeAtualBase64 = '';
+            sessoesWhatsApp[usuarioId].status = 'desconectado';
+            sessoesWhatsApp[usuarioId].qr = '';
             const shouldReconnect = (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut);
-            console.log('⚠️ Conexão do WhatsApp fechada. Reconectando...', shouldReconnect);
             if (shouldReconnect) {
-                iniciarBotWhatsApp();
+                setTimeout(() => iniciarBotUsuario(usuarioId), 3000);
             }
         } else if (connection === 'open') {
-            botStatusConexao = 'conectado';
-            qrCodeAtualBase64 = '';
-            console.log('🚀 BOT DO WHATSAPP CONECTADO E PRONTO PARA RECEBER GASTOS!');
+            sessoesWhatsApp[usuarioId].status = 'conectado';
+            sessoesWhatsApp[usuarioId].qr = '';
+            console.log(`🚀 WhatsApp conectado com sucesso para o Usuário ID ${usuarioId}!`);
         }
     });
 
@@ -635,30 +409,20 @@ async function iniciarBotWhatsApp() {
             if (!msg || !msg.message) return;
 
             const remetenteRaw = msg.key.remoteJid;
-            const eGrupo = remetenteRaw.endsWith('@g.us');
-
-            // Identifica o número exato de quem enviou a mensagem (seja no privado ou no grupo)
-            const jidRemetenteReal = eGrupo ? (msg.key.participant || remetenteRaw) : remetenteRaw;
-            const numeroRemetente = jidRemetenteReal.replace(/[^0-9]/g, '');
-
             const textoMensagem = (
-                msg.message.conversation ||
-                msg.message.extendedTextMessage?.text ||
-                msg.message.imageMessage?.caption ||
+                msg.message.conversation || 
+                msg.message.extendedTextMessage?.text || 
+                msg.message.imageMessage?.caption || 
                 ''
             ).trim();
 
             if (!textoMensagem) return;
 
-            // Verificação flexível de Gatilhos
             const textoMinusculo = textoMensagem.toLowerCase();
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei'];
-
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
+            if (!temGatilho) return;
 
-            if (!temGatilho) return; // Ignora conversas normais
-
-            // Limpa o gatilho
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
                 if (textoLimpo.toLowerCase().startsWith(g)) {
@@ -666,81 +430,35 @@ async function iniciarBotWhatsApp() {
                 }
             });
 
-            console.log(`💬 Comando financeiro recebido de ${numeroRemetente} (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
-
-            // ==========================================
-            // IDENTIFICAÇÃO INTELIGENTE DO USUÁRIO PELO TELEFONE (VERSÃO BLINDADA)
-            // ==========================================
-            let idUsuarioFinal = null; 
-
-            try {
-                const numeroLimpo = numeroRemetente.replace(/\D/g, '');
-                // Pega os últimos 8 dígitos do número enviado pelo WhatsApp (ex: 94881537)
-                const ultimos8Digitos = numeroLimpo.slice(-8);
-                
-                console.log(`🔍 Número recebido: "${numeroRemetente}" -> Limpo: "${numeroLimpo}" -> Buscando finais: "${ultimos8Digitos}"`);
-
-                // Busca no banco qualquer usuário cujo telefone termine com os mesmos 8 dígitos
-                const buscaUser = await pool.query(
-                    `SELECT id, nome, telefone FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
-                    [`%${ultimos8Digitos}`]
-                );
-
-                if (buscaUser.rows.length > 0) {
-                    idUsuarioFinal = buscaUser.rows[0].id;
-                    console.log(`👤 Usuário identificado no banco: ID ${idUsuarioFinal} (${buscaUser.rows[0].nome}) via final ${ultimos8Digitos}`);
-                } else {
-                    console.warn(`⚠️ Nenhum usuário encontrado com o final "${ultimos8Digitos}".`);
-                }
-            } catch (errUser) {
-                console.error("Erro ao buscar usuário por telefone:", errUser.message);
-            }
-
-            // Se o usuário não estiver vinculado, avisa no WhatsApp
-            if (!idUsuarioFinal) {
-                await sock.sendMessage(remetenteRaw, { 
-                    text: `⚠️ *Número não vinculado!*\nO final do seu número do WhatsApp (${numeroRemetente.slice(-8)}) não está cadastrado em nenhuma conta do FinancIA.\n\nAcesse o painel web, vá em *⚙️ Vincular Meu WhatsApp* e salve seu número correto!` 
-                });
-                return;
-            }
+            console.log(`💬 Comando recebido no WhatsApp do Usuário ID ${usuarioId}: "${textoLimpo}"`);
 
             const promptIA = `
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
             Mensagem: "${textoLimpo}"
 
             Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
-            {"eGasto": true, "descricao": "Gasolina", "valor": 50.00, "tipo": "saida"}
+            {"eGasto": true, "descricao": "Roupa", "valor": 45.00, "tipo": "saida"}
 
             Se for recebimento/Pix/salário use "tipo": "entrada".
             Se não for um registro financeiro, responda: {"eGasto": false}
             `;
 
             let resultado = { eGasto: false };
-
             try {
                 const respostaIA = await chamarComRetry(promptIA);
                 if (respostaIA && respostaIA.text) {
                     let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
                     const inicio = jsonLimpo.indexOf('{');
                     const fim = jsonLimpo.lastIndexOf('}');
-                    if (inicio !== -1 && fim !== -1) {
-                        jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
-                    }
+                    if (inicio !== -1 && fim !== -1) jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
                     resultado = JSON.parse(jsonLimpo);
                 }
             } catch (errIA) {
-                console.warn("⚠️ IA indisponível ou cota excedida. Usando extrator de emergência por Regex...");
                 const numerosEncontrados = textoLimpo.match(/\d+([.,]\d+)?/);
                 if (numerosEncontrados) {
                     const valExt = parseFloat(numerosEncontrados[0].replace(',', '.'));
                     let descExt = textoLimpo.replace(numerosEncontrados[0], '').replace(/reais|de|por|em/gi, '').trim();
-                    if (!descExt) descExt = 'Gasto WhatsApp';
-                    resultado = {
-                        eGasto: true,
-                        descricao: descExt,
-                        valor: valExt,
-                        tipo: 'saida'
-                    };
+                    resultado = { eGasto: true, descricao: descExt || 'Gasto WhatsApp', valor: valExt, tipo: 'saida' };
                 }
             }
 
@@ -751,28 +469,22 @@ async function iniciarBotWhatsApp() {
                 if (resultado.tipo === 'entrada') {
                     await pool.query(
                         `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
+                        [usuarioId, resultado.descricao, valorNum, dataHoje]
                     );
-
-                    await sock.sendMessage(remetenteRaw, {
-                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
-                    });
+                    await sock.sendMessage(remetenteRaw, { text: `✅ *Entrada registrada no seu FinancIA!*\n💰 R$ ${valorNum.toFixed(2)} - ${resultado.descricao}` });
                 } else {
                     const descNorm = resultado.descricao.toLowerCase();
                     let cat = 'Compras';
-                    if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
-                    else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
-                    else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('pizza')) cat = 'Lazer';
-                    else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
+                    if (descNorm.includes('mercado') || descNorm.includes('padaria')) cat = 'Mercado';
+                    else if (descNorm.includes('gasolina') || descNorm.includes('uber')) cat = 'Transporte';
+                    else if (descNorm.includes('ifood') || descNorm.includes('lanche')) cat = 'Lazer';
+                    else if (descNorm.includes('aluguel') || descNorm.includes('luz')) cat = 'Casa';
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
+                        [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
                     );
-
-                    await sock.sendMessage(remetenteRaw, {
-                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
-                    });
+                    await sock.sendMessage(remetenteRaw, { text: `📌 *Gasto registrado no seu FinancIA!*\n💸 R$ ${valorNum.toFixed(2)} [${cat}] - ${resultado.descricao}` });
                 }
             }
         } catch (err) {
@@ -781,8 +493,25 @@ async function iniciarBotWhatsApp() {
     });
 }
 
-// Inicia o bot do WhatsApp em segundo plano
-iniciarBotWhatsApp();
+// Rota para o usuário pegar o QR Code do SEU próprio perfil
+app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
+    const usuarioId = req.usuario.id;
+
+    if (!sessoesWhatsApp[usuarioId] || sessoesWhatsApp[usuarioId].status === 'desconectado') {
+        iniciarBotUsuario(usuarioId);
+        return res.json({ status: 'aguardando', mensagem: 'Iniciando gerador de QR Code exclusivo... Tente em 3 segundos.' });
+    }
+
+    if (sessoesWhatsApp[usuarioId].status === 'conectado') {
+        return res.json({ status: 'conectado', mensagem: 'Seu WhatsApp já está conectado neste perfil!' });
+    }
+
+    if (!sessoesWhatsApp[usuarioId].qr) {
+        return res.json({ status: 'aguardando', mensagem: 'Gerando QR Code... Aguarde.' });
+    }
+
+    res.json({ status: 'pendente', qrcode: sessoesWhatsApp[usuarioId].qr });
+});
 
 app.listen(PORT, () => {
     console.log(`🚀 FinancIA Autônoma rodando na porta ${PORT}`);
