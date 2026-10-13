@@ -326,6 +326,7 @@
     </div>
 
     <!-- Script de controle do Modal do WhatsApp -->
+    <!-- Script de controle do Modal do WhatsApp -->
     <script>
         let intervaloQrModal = null;
 
@@ -343,34 +344,48 @@
 
         async function carregarQrCodeWhatsapp() {
             try {
-                const token = localStorage.getItem('token');
+                // Usa a chave correta financia_token
+                const token = localStorage.getItem('financia_token');
+
                 const res = await fetch('https://finan-as2-0.onrender.com/api/whatsapp/qr-code', {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
                 });
+
+                if (!res.ok) {
+                    throw new Error(`Erro HTTP: ${res.status}`);
+                }
+
                 const data = await res.json();
 
-            const imgEl = document.getElementById('imgQrCode');
-            const txtEl = document.getElementById('statusQrTexto');
+                const imgEl = document.getElementById('imgQrCode');
+                const txtEl = document.getElementById('statusQrTexto');
 
-            if (data.status === 'conectado') {
-                txtEl.innerText = '✅ Seu WhatsApp já está conectado e pronto para receber gastos!';
-                txtEl.style.color = '#10B981';
-                txtEl.style.display = 'block';
-                imgEl.style.display = 'none';
-                if (intervaloQrModal) clearInterval(intervaloQrModal);
-            } else if (data.status === 'pendente' && data.qrcode) {
-                imgEl.src = data.qrcode;
-                imgEl.style.display = 'block';
-                txtEl.style.display = 'none';
-            } else {
-                txtEl.innerText = data.mensagem || 'Gerando QR Code... Aguarde.';
-                txtEl.style.color = '#9CA3AF';
-                txtEl.style.display = 'block';
-                imgEl.style.display = 'none';
+                if (data.status === 'conectado') {
+                    txtEl.innerText = '✅ Seu WhatsApp já está conectado e pronto para receber gastos!';
+                    txtEl.style.color = '#10B981';
+                    txtEl.style.display = 'block';
+                    imgEl.style.display = 'none';
+                    if (intervaloQrModal) clearInterval(intervaloQrModal);
+                } else if (data.status === 'pendente' && data.qrcode) {
+                    imgEl.src = data.qrcode;
+                    imgEl.style.display = 'block';
+                    txtEl.style.display = 'none';
+                } else {
+                    txtEl.innerText = data.mensagem || 'Gerando QR Code... Aguarde.';
+                    txtEl.style.color = '#9CA3AF';
+                    txtEl.style.display = 'block';
+                    imgEl.style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Erro ao buscar QR Code:', err);
+                const txtEl = document.getElementById('statusQrTexto');
+                if (txtEl) {
+                    txtEl.innerText = 'Erro ao conectar com o servidor do WhatsApp.';
+                    txtEl.style.color = '#ff6b6b';
+                }
             }
-        } catch (err) {
-            console.error('Erro ao buscar QR Code:', err);
-        }
         }
     </script>
 
