@@ -17,6 +17,11 @@
     <!-- Favicon e Ícone de Aba -->
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        // Configura o worker do PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
 </head>
 
 <body>
@@ -63,7 +68,8 @@
                             <button class="btn-time" onclick="filtrarTempoPatrimonio('meses', this)">1M</button>
                             <button class="btn-time" onclick="filtrarTempoPatrimonio('anos', this)">1A</button>
                         </div>
-                        <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir Saldo</button>
+                        <button class="btn-edit" onclick="alternarFormulario('formPatrimonio')">⚙️ Definir
+                            Saldo</button>
                     </div>
                 </div>
 
@@ -85,7 +91,8 @@
                 </div>
 
                 <div id="formAlocacao" class="simulator-box-col" style="display: none;">
-                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600;">Tipo de Ativo:</label>
+                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600;">Tipo de
+                        Ativo:</label>
                     <select id="inputTipoAtivo">
                         <option value="FIIs">Fundo Imobiliário (FII)</option>
                         <option value="Acoes">Ação (Empresas B3 / BDRs)</option>
@@ -94,9 +101,11 @@
 
                     <input type="text" id="inputTickerAtivo" placeholder="Ticker/Sigla (ex: MXRF11, PETR4, SOL)">
                     <input type="number" step="any" id="inputQtdAtivo" placeholder="Quantidade de cotas/unidades">
-                    <input type="number" step="any" id="inputPrecoUnitarioAtivo" placeholder="Preço pago por cota/unidade no dia (R$)">
+                    <input type="number" step="any" id="inputPrecoUnitarioAtivo"
+                        placeholder="Preço pago por cota/unidade no dia (R$)">
 
-                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600; margin-top: 4px;">Data da Compra:</label>
+                    <label style="font-size: 0.8rem; color: var(--verde-suave); font-weight: 600; margin-top: 4px;">Data
+                        da Compra:</label>
                     <input type="date" id="inputDataAtivo">
 
                     <button type="button" onclick="adicionarAtivoPortfolio()">Salvar Ativo no Portfólio</button>
@@ -168,7 +177,8 @@
                     <button type="button" onclick="adicionarAporteMes()">Registrar Aporte</button>
                 </div>
 
-                <div class="transaction-list" id="listaAportesCadastrados" style="margin-top: 15px; margin-bottom: 15px;"></div>
+                <div class="transaction-list" id="listaAportesCadastrados"
+                    style="margin-top: 15px; margin-bottom: 15px;"></div>
 
                 <div class="chart-container">
                     <canvas id="performanceChart"></canvas>
@@ -188,7 +198,8 @@
                 <div class="transaction-list" id="listaEntradasCadastradas"></div>
                 <div class="fixed-total-box" style="margin-top: 10px;">
                     <span>Total Entradas:</span>
-                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$ 0,00</strong>
+                    <strong id="totalEntradasDisplay" class="privacy-target" style="color: var(--verde-destaque);">R$
+                        0,00</strong>
                 </div>
             </section>
 
@@ -207,10 +218,13 @@
                         <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
                     </div>
                     <div class="progress-track">
-                        <div class="progress-bar" id="barraGastoProporcao" style="width: 0%; background-color: var(--verde-destaque);"></div>
+                        <div class="progress-bar" id="barraGastoProporcao"
+                            style="width: 0%; background-color: var(--verde-destaque);"></div>
                     </div>
-                    <small id="alertaGastoTexto" style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
-                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos e reserva.
+                    <small id="alertaGastoTexto"
+                        style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
+                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos
+                        e reserva.
                     </small>
                 </div>
             </section>
@@ -219,9 +233,11 @@
                 <div class="card-header-flex">
                     <h2>Gastos Variáveis</h2>
                     <div style="display: flex; align-items: center; gap: 10px;">
-                        <label class="btn-edit" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        <label class="btn-edit"
+                            style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
                             <span>🏦 Importar Extrato</span>
-                            <input type="file" accept=".ofx,.pdf,.csv,.txt" onchange="importarArquivoOFX(this)" style="display: none;">
+                            <input type="file" accept=".ofx,.csv,.txt" onchange="importarArquivoOFX(this)"
+                                style="display: none;">
                         </label>
                         <span class="bank-status">🟢 Sincronizado</span>
                     </div>

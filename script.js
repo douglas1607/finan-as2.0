@@ -1075,15 +1075,53 @@ if ('serviceWorker' in navigator) {
             .catch((err) => console.log('Erro ao registrar Service Worker:', err));
     });
 }
-async function importarArquivoOFX(inputElement) {
-    const file = inputElement.files[0];
-    if (!file) return;
+async function importarArquivoOFX(input) {
+    const arquivo = input.files[0];
+    if (!arquivo) return;
 
     const formData = new FormData();
-    formData.append('arquivoOfx', file);
+
+    // Se for PDF, extrai o texto no navegador primeiro para garantir 100% de compatibilidade
+    if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
+        try {
+            const arrayBuffer = await arquivo.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let textoCompleto = '';
+
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                const pagina = await pdfDoc.getPage(i);
+                const conteudoPagina = await pagina.getTextContent();
+                const textoPagina = conteudoPagina.items.map(item => item.str).join(' ');
+                textoCompleto += textoPagina + '\n';
+            }
+
+            if (!textoCompleto.trim()) {
+                alert("O PDF parece estar vazio ou escaneado como imagem.");
+                return;
+            }
+
+            // Cria um arquivo de texto virtual com o conteúdo extraído do PDF para enviar ao servidor
+            const arquivoTexto = new File([textoCompleto], "extrato_convertido.txt", { type: "text/plain" });
+            formData.append('arquivoOfx', arquivoTexto);
+        } catch (e) {
+            console.error("Erro ao ler PDF no navegador:", e);
+            alert("Não foi possível ler este PDF. Tente enviar em formato OFX.");
+            return;
+        }
+    } else {
+        // Se for OFX ou CSV, envia direto
+        formData.append('arquivoOfx', arquivo);
+    }
+
+    // Mostra feedback visual de carregamento
+    const token = localStorage.getItem('token');
+    if (!token) {
+        alert("Sessão expirada. Faça login novamente.");
+        return;
+    }
 
     try {
-        const res = await fetch(`${API_URL}/importar-ofx`, {
+        const resposta = await fetch('/api/importar-ofx', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -1091,20 +1129,15 @@ async function importarArquivoOFX(inputElement) {
             body: formData
         });
 
-        const data = await res.json();
-
-        if (res.ok) {
-            alert(data.mensagem || "Extrato importado com sucesso!");
-            // Recarrega as listas no dashboard automaticamente
-            carregarEntradasBD();
-            carregarDadosDoBD();
+        const resultado = await resposta.json();
+        if (resposta.ok) {
+            alert(resultado.mensagem);
+            window.location.reload(); // Recarrega para atualizar os gráficos e saldos
         } else {
-            alert(data.erro || "Erro ao importar o extrato.");
+            alert(resultado.erro || "Erro ao importar arquivo.");
         }
     } catch (err) {
         console.error("Erro na requisição:", err);
-        alert("Erro de conexão com o servidor ao importar o extrato.");
-    } finally {
-        inputElement.value = ''; // Reseta o campo de arquivo
+        alert("Erro de conexão com o servidor.");
     }
 }
