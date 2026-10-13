@@ -283,7 +283,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação Automática de Extrato OFX com IA
+// Rota de Importação Automática de Extrato OFX (Versão Robusta com Parser + Fallback Regex)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -291,17 +291,48 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         }
 
         const conteudoOfx = req.file.buffer.toString('utf8');
-        const dadosParseados = ofx.parse(conteudoOfx);
-        const transacoesOfx = dadosParseados.bankTransactionList || [];
+        let transacoesEncontradas = [];
 
-        if (!transacoesOfx || transacoesOfx.length === 0) {
-            return res.status(400).json({ erro: 'Nenhuma transação encontrada no arquivo.' });
+        try {
+            const dadosParseados = ofx.parse(conteudoOfx);
+            transacoesEncontradas = dadosParseados.bankTransactionList || [];
+        } catch (parserErr) {
+            console.log("⚠️ Parser padrão falhou, ativando leitor alternativo por blocos OFX...");
+        }
+
+        if (!transacoesEncontradas || transacoesEncontradas.length === 0) {
+            const regexTransacao = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
+            let match;
+            while ((match = regexTransacao.exec(conteudoOfx)) !== null) {
+                const bloco = match[1];
+                
+                const getTag = (tag) => {
+                    const tagMatch = new RegExp(`<${tag}>(.*?)(?:<|<\\/|\n|\r)`, 'i').exec(bloco);
+                    return tagMatch ? tagMatch[1].trim() : '';
+                };
+
+                const trnAmt = getTag('TRNAMT');
+                const dtPosted = getTag('DTPOSTED');
+                const memo = getTag('MEMO') || getTag('NAME') || 'Transação Bancária';
+
+                if (trnAmt && dtPosted) {
+                    transacoesEncontradas.push({
+                        TRNAMT: trnAmt,
+                        DTPOSTED: dtPosted,
+                        MEMO: memo
+                    });
+                }
+            }
+        }
+
+        if (!transacoesEncontradas || transacoesEncontradas.length === 0) {
+            return res.status(400).json({ erro: 'Não foi possível ler as transações deste arquivo. Verifique se é um OFX válido.' });
         }
 
         let importadosCount = 0;
 
-        for (let item of transacoesOfx) {
-            const valorNum = parseFloat(item.TRNAMT);
+        for (let item of transacoesEncontradas) {
+            const valorNum = parseFloat(item.TRNAMT.replace(',', '.'));
             const descricao = item.MEMO || item.NAME || 'Transação Bancária';
             
             const rawData = item.DTPOSTED ? item.DTPOSTED.substring(0, 8) : '';
@@ -317,7 +348,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                     [req.usuario.id, descricao, valorNum, dataFormatada]
                 );
             } else {
-                // Saída / Gasto Variável (Usa a mesma inteligência da IA da rota de transações)
+                // Saída / Gasto Variável categorizado por palavras-chave
                 const valorPositivo = Math.abs(valorNum);
                 const descNorm = descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                 let categoriaIA = "Compras";
@@ -342,7 +373,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
         return res.json({ 
             sucesso: true, 
-            mensagem: `✨ ${importadosCount} transações importadas, lidas e categorizadas com sucesso!` 
+            mensagem: `✨ ${importadosCount} transações importadas e categorizadas com sucesso!` 
         });
 
     } catch (err) {
