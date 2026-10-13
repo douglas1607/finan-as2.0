@@ -30,6 +30,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Inicialização segura da IA com a chave explícita
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.trim() : '' });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -317,7 +318,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             if (response && response.text) {
                 let textoResposta = response.text.trim();
                 textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
-
+                
                 const inicio = textoResposta.indexOf('[');
                 const fim = textoResposta.lastIndexOf(']');
                 if (inicio !== -1 && fim !== -1) {
@@ -372,9 +373,9 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             importadosCount++;
         }
 
-        return res.json({
-            sucesso: true,
-            mensagem: `✨ ${importadosCount} movimentações importadas e categorizadas com sucesso!`
+        return res.json({ 
+            sucesso: true, 
+            mensagem: `✨ ${importadosCount} movimentações importadas e categorizadas com sucesso!` 
         });
 
     } catch (err) {
