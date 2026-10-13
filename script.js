@@ -1078,36 +1078,7 @@ async function importarArquivoOFX(input) {
     }
 
     const formData = new FormData();
-
-    // Se for PDF, extrai o texto no navegador para garantir 100% de compatibilidade com extratos do Mercado Pago/Bancos
-    if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
-        try {
-            const arrayBuffer = await arquivo.arrayBuffer();
-            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let textoCompleto = '';
-
-            for (let i = 1; i <= pdfDoc.numPages; i++) {
-                const pagina = await pdfDoc.getPage(i);
-                const conteudoPagina = await pagina.getTextContent();
-                const textoPagina = conteudoPagina.items.map(item => item.str).join(' ');
-                textoCompleto += textoPagina + '\n';
-            }
-
-            if (!textoCompleto.trim()) {
-                alert("O PDF parece estar vazio ou escaneado como imagem.");
-                return;
-            }
-
-            const arquivoTexto = new File([textoCompleto], "extrato_convertido.txt", { type: "text/plain" });
-            formData.append('arquivoOfx', arquivoTexto);
-        } catch (e) {
-            console.error("Erro ao ler PDF no navegador:", e);
-            alert("Não foi possível ler este PDF. Tente enviar em formato OFX.");
-            return;
-        }
-    } else {
-        formData.append('arquivoOfx', arquivo);
-    }
+    formData.append('arquivoOfx', arquivo); // Envia o arquivo original (PDF, OFX, CSV ou Imagem) direto para o backend
 
     try {
         const resposta = await fetch(`${API_URL}/importar-ofx`, {
