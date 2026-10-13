@@ -283,45 +283,49 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota Universal de Importação (Suporta OFX, CSV, TXT, PDF e Imagens/Prints de Extratos via IA Multimodal)
+// Rota Universal de Importação (Aceita OFX, CSV, TXT e o texto extraído do PDF)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
-            return res.status(400).json({ erro: 'Nenhum arquivo enviado.' });
+            return res.status(400).json({ erro: 'Nenhum arquivo de extrato enviado.' });
         }
 
-        const mimeType = req.file.mimetype || '';
-        const nomeArquivo = req.file.originalname.toLowerCase();
+        const conteudoTexto = req.file.buffer.toString('utf8');
         let transacoesParaProcessar = [];
 
-        // 1. CASO SEJA DOCUMENTO VISUAL OU BINÁRIO (PDF, JPG, PNG, WEBP)
-        if (mimeType.includes('pdf') || mimeType.includes('image') || nomeArquivo.endsWith('.pdf') || nomeArquivo.endsWith('.png') || nomeArquivo.endsWith('.jpg') || nomeArquivo.endsWith('.jpeg')) {
+        // Tenta ler primeiro como OFX estruturado
+        try {
+            const dadosParseados = ofx.parse(conteudoTexto);
+            const listaOFX = dadosParseados.bankTransactionList || [];
+            transacoesParaProcessar = listaOFX.map(t => ({
+                descricao: t.MEMO || t.NAME || 'Transação Bancária',
+                valor: parseFloat((t.TRNAMT || '0').replace(',', '.')),
+                data: t.DTPOSTED ? `${t.DTPOSTED.substring(6,8)}/${t.DTPOSTED.substring(4,6)}/${t.DTPOSTED.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
+            }));
+        } catch (e) {
+            // Se não for OFX estruturado, usa a Inteligência Artificial do Gemini para ler o texto limpo do PDF/CSV/TXT!
             try {
-                const base64Data = req.file.buffer.toString('base64');
-                const tipoMimeFinal = mimeType.includes('image') ? mimeType : 'application/pdf';
-
-                const promptVisual = `
-                Você é um extrator financeiro de alta precisão com visão computacional.
-                Analise este extrato bancário (seja documento PDF, print de tela ou foto).
+                const promptIA = `
+                Você é um extrator financeiro inteligente. Analise o texto deste extrato bancário abaixo.
                 Extraia TODAS as transações financeiras e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
                 Cada item do array deve ter exatamente estas chaves:
-                - "descricao": string com o nome/histórico da transação
-                - "valor": número (positivo para entradas/recebimentos/Pix recebido, negativo para saídas/gastos/compras/pagamentos)
+                - "descricao": string clara com o nome da transação (ex: "Dinheiro retirado Dizimo", "Brisanet", etc.)
+                - "valor": número (positivo para entradas/Pix recebido/salário, negativo para saídas/compras/pagamentos/débitos)
                 - "data": string no formato DD/MM/AAAA
+
+                Texto do Extrato:
+                ${conteudoTexto}
 
                 Exemplo de formato esperado:
                 [
-                  {"descricao": "Pix Recebido João", "valor": 150.00, "data": "10/10/2026"},
-                  {"descricao": "Supermercado Moranguinho", "valor": -85.50, "data": "11/10/2026"}
+                  {"descricao": "Pix Recebido", "valor": 150.00, "data": "01/08/2026"},
+                  {"descricao": "Dinheiro retirado Dizimo", "valor": -356.22, "data": "01/08/2026"}
                 ]
                 `;
 
                 const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
-                    contents: [
-                        { inlineData: { mimeType: tipoMimeFinal, data: base64Data } },
-                        { text: promptVisual }
-                    ]
+                    contents: promptIA
                 });
 
                 if (response && response.text) {
@@ -337,54 +341,16 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                     transacoesParaProcessar = JSON.parse(textoResposta);
                 }
             } catch (errIA) {
-                console.error("❌ Erro ao processar documento visual com Gemini:", errIA);
-            }
-        } 
-        // 2. CASO SEJA FICHEIRO DE TEXTO / ESTRUTURADO (OFX, CSV, TXT)
-        else {
-            const conteudoTexto = req.file.buffer.toString('utf8');
-            try {
-                const dadosParseados = ofx.parse(conteudoTexto);
-                const listaOFX = dadosParseados.bankTransactionList || [];
-                transacoesParaProcessar = listaOFX.map(t => ({
-                    descricao: t.MEMO || t.NAME || 'Transação Bancária',
-                    valor: parseFloat((t.TRNAMT || '0').replace(',', '.')),
-                    data: t.DTPOSTED ? `${t.DTPOSTED.substring(6,8)}/${t.DTPOSTED.substring(4,6)}/${t.DTPOSTED.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
-                }));
-            } catch (e) {
-                try {
-                    const promptTexto = `
-                    Analise este texto de extrato bancário. Extraia todas as transações e retorne um array JSON puro com chaves "descricao", "valor" (positivo para entrada, negativo para saída) e "data" (DD/MM/AAAA).
-                    Texto:
-                    ${conteudoTexto}
-                    `;
-                    const response = await ai.models.generateContent({
-                        model: 'gemini-2.5-flash',
-                        contents: promptTexto
-                    });
-
-                    if (response && response.text) {
-                        let textoResposta = response.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-                        const inicio = textoResposta.indexOf('[');
-                        const fim = textoResposta.lastIndexOf(']');
-                        if (inicio !== -1 && fim !== -1) {
-                            textoResposta = textoResposta.substring(inicio, fim + 1);
-                        }
-                        transacoesParaProcessar = JSON.parse(textoResposta);
-                    }
-                } catch (errTexto) {
-                    console.error("Erro ao ler texto com Gemini:", errTexto);
-                }
+                console.error("Erro na IA ao ler extrato:", errIA);
             }
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
-            return res.status(400).json({ erro: 'Não foi possível extrair transações válidas deste arquivo. Verifique se o documento/imagem está legível.' });
+            return res.status(400).json({ erro: 'Não foi possível identificar transações válidas neste arquivo.' });
         }
 
         let importadosCount = 0;
 
-        // 3. SALVA NO BANCO DE DADOS E CATEGORIZA
         for (let item of transacoesParaProcessar) {
             const valorNum = parseFloat(item.valor);
             const descricao = item.descricao || 'Movimentação Bancária';
@@ -408,7 +374,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                     categoriaIA = 'Lazer';
                 } else if (descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('feira') || descNorm.includes('padaria') || descNorm.includes('acougue') || descNorm.includes('hortifruti')) {
                     categoriaIA = 'Mercado';
-                } else if (descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || descNorm.includes('reforma') || descNorm.includes('cimento')) {
+                } else if (descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || descNorm.includes('reforma') || descNorm.includes('cimento') || descNorm.includes('brisanet')) {
                     categoriaIA = 'Casa';
                 }
 
@@ -427,7 +393,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
     } catch (err) {
         console.error("Erro geral ao processar extrato:", err);
-        return res.status(500).json({ erro: 'Erro interno ao processar o extrato enviado.' });
+        return res.status(500).json({ erro: 'Erro interno ao ler e processar o extrato enviado.' });
     }
 });
 
