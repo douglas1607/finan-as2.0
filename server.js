@@ -6,6 +6,8 @@ const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { GoogleGenAI } = require('@google/genai');
+const multer = require('multer');
+const ofx = require('ofx-data-extractor');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,6 +31,7 @@ app.get('/', (req, res) => {
 });
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const upload = multer({ storage: multer.memoryStorage() });
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -92,7 +95,6 @@ async function inicializarTabelas() {
                 data VARCHAR(50)
             );
         `);
-        // Adiciona a coluna data_compra caso a tabela já existisse no Postgres sem ela
         await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
         console.log("✅ Tabelas PostgreSQL verificadas/criadas com sucesso!");
     } catch (e) {
@@ -281,6 +283,74 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
+// Rota de Importação Automática de Extrato OFX com IA
+app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ erro: 'Nenhum arquivo de extrato enviado.' });
+        }
+
+        const conteudoOfx = req.file.buffer.toString('utf8');
+        const dadosParseados = ofx.parse(conteudoOfx);
+        const transacoesOfx = dadosParseados.bankTransactionList || [];
+
+        if (!transacoesOfx || transacoesOfx.length === 0) {
+            return res.status(400).json({ erro: 'Nenhuma transação encontrada no arquivo.' });
+        }
+
+        let importadosCount = 0;
+
+        for (let item of transacoesOfx) {
+            const valorNum = parseFloat(item.TRNAMT);
+            const descricao = item.MEMO || item.NAME || 'Transação Bancária';
+            
+            const rawData = item.DTPOSTED ? item.DTPOSTED.substring(0, 8) : '';
+            let dataFormatada = new Date().toLocaleDateString('pt-BR');
+            if (rawData.length === 8) {
+                dataFormatada = `${rawData.substring(6, 8)}/${rawData.substring(4, 6)}/${rawData.substring(0, 4)}`;
+            }
+
+            if (valorNum > 0) {
+                // Entrada (Pix recebido, salário, etc.)
+                await pool.query(
+                    'INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)',
+                    [req.usuario.id, descricao, valorNum, dataFormatada]
+                );
+            } else {
+                // Saída / Gasto Variável (Usa a mesma inteligência da IA da rota de transações)
+                const valorPositivo = Math.abs(valorNum);
+                const descNorm = descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                let categoriaIA = "Compras";
+
+                if (descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('etanol') || descNorm.includes('diesel') || descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('taxi') || descNorm.includes('pedagio')) {
+                    categoriaIA = 'Transporte';
+                } else if (descNorm.includes('acai') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('ifood') || descNorm.includes('pizza') || descNorm.includes('churrasco') || descNorm.includes('cerveja') || descNorm.includes('sorvete') || descNorm.includes('sushi')) {
+                    categoriaIA = 'Lazer';
+                } else if (descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('feira') || descNorm.includes('padaria') || descNorm.includes('acougue') || descNorm.includes('hortifruti')) {
+                    categoriaIA = 'Mercado';
+                } else if (descNorm.includes('aluguel') || descNorm.includes('condominio') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || descNorm.includes('reforma') || descNorm.includes('cimento')) {
+                    categoriaIA = 'Casa';
+                }
+
+                await pool.query(
+                    'INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)',
+                    [req.usuario.id, descricao, valorPositivo, categoriaIA, dataFormatada]
+                );
+            }
+            importadosCount++;
+        }
+
+        return res.json({ 
+            sucesso: true, 
+            mensagem: `✨ ${importadosCount} transações importadas, lidas e categorizadas com sucesso!` 
+        });
+
+    } catch (err) {
+        console.error("Erro ao processar arquivo de extrato:", err);
+        return res.status(500).json({ erro: 'Erro ao processar e ler o arquivo do extrato.' });
+    }
+});
+
 // Rotas Gastos Fixos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
@@ -317,7 +387,7 @@ app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
-// Rotas Ativos / Portfólio (Respeita 100% o Select e salva Data de Compra)
+// Rotas Ativos / Portfólio
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -337,8 +407,6 @@ app.post('/api/ativos', autenticarToken, async (req, res) => {
     const tickerLimpo = ticker.toUpperCase().trim();
     let tipoFinal = tipo || 'FIIs';
 
-    // Se o usuário explicitamente selecionou FIIs, Acoes ou Cripto, essa escolha é absoluta.
-    // Apenas se ele deixasse em Acoes e o ticker terminasse em 11, ajustamos para FIIs como garantia extra.
     if (tipo === 'Acoes' && (tickerLimpo.endsWith('11') || tickerLimpo.endsWith('11B'))) {
         tipoFinal = 'FIIs';
     }

@@ -1,0 +1,12 @@
+export declare const ELEMENT_CLOSURE_REGEX: RegExp;
+export declare const ELEMENT_OPENING_REGEX: RegExp;
+export declare const BANK_SERVICE_START = "<BANKMSGSRSV1>";
+export declare const BANK_SERVICE_END = "</BANKMSGSRSV1>";
+export declare const CREDIT_CARD_SERVICE_START = "<CREDITCARDMSGSRSV1>";
+export declare const CREDIT_CARD_SERVICE_END = "</CREDITCARDMSGSRSV1>";
+export declare const START_STATEMENT_TRANSACION = "<STMTTRN>";
+export declare const FINISH_STATEMENT_TRANSACTION = "</STMTTRN>";
+export declare const QUOTE_PATTERN = "_#_";
+export declare const QUOTE_PATTERN_REGEX: RegExp;
+export declare const OPENING_TAGS_INITIALLY_IGNORED: string[];
+export declare const CLOSING_TAGS_INITIALLY_IGNORED: string[];

@@ -218,7 +218,13 @@
             <section class="card expense-tracker">
                 <div class="card-header-flex">
                     <h2>Gastos Variáveis</h2>
-                    <span class="bank-status">🟢 Sincronizado</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label class="btn-edit" style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                            <span>🏦 Importar Extrato</span>
+                            <input type="file" accept=".ofx" onchange="importarArquivoOFX(this)" style="display: none;">
+                        </label>
+                        <span class="bank-status">🟢 Sincronizado</span>
+                    </div>
                 </div>
 
                 <div class="simulator-box-row">

@@ -1075,3 +1075,36 @@ if ('serviceWorker' in navigator) {
             .catch((err) => console.log('Erro ao registrar Service Worker:', err));
     });
 }
+async function importarArquivoOFX(inputElement) {
+    const file = inputElement.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('arquivoOfx', file);
+
+    try {
+        const res = await fetch(`${API_URL}/importar-ofx`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            alert(data.mensagem || "Extrato importado com sucesso!");
+            // Recarrega as listas no dashboard automaticamente
+            carregarEntradasBD();
+            carregarDadosDoBD();
+        } else {
+            alert(data.erro || "Erro ao importar o extrato.");
+        }
+    } catch (err) {
+        console.error("Erro na requisição:", err);
+        alert("Erro de conexão com o servidor ao importar o extrato.");
+    } finally {
+        inputElement.value = ''; // Reseta o campo de arquivo
+    }
+}
