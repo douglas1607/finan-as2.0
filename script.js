@@ -1078,7 +1078,6 @@ async function importarArquivoOFX(input) {
     const arquivo = input.files[0];
     if (!arquivo) return;
 
-    // Utiliza a chave correta guardada no login ('financia_token')
     const tokenAtual = localStorage.getItem('financia_token');
     if (!tokenAtual) {
         alert("Sessão expirada. Faça login novamente.");
@@ -1087,39 +1086,9 @@ async function importarArquivoOFX(input) {
     }
 
     const formData = new FormData();
-
-    // Se for PDF, extrai o texto no navegador primeiro para garantir compatibilidade
-    if (arquivo.type === 'application/pdf' || arquivo.name.toLowerCase().endsWith('.pdf')) {
-        try {
-            const arrayBuffer = await arquivo.arrayBuffer();
-            const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            let textoCompleto = '';
-
-            for (let i = 1; i <= pdfDoc.numPages; i++) {
-                const pagina = await pdfDoc.getPage(i);
-                const conteudoPagina = await pagina.getTextContent();
-                const textoPagina = conteudoPagina.items.map(item => item.str).join(' ');
-                textoCompleto += textoPagina + '\n';
-            }
-
-            if (!textoCompleto.trim()) {
-                alert("O PDF parece estar vazio ou escaneado como imagem.");
-                return;
-            }
-
-            const arquivoTexto = new File([textoCompleto], "extrato_convertido.txt", { type: "text/plain" });
-            formData.append('arquivoOfx', arquivoTexto);
-        } catch (e) {
-            console.error("Erro ao ler PDF no navegador:", e);
-            alert("Não foi possível ler este PDF. Tente enviar em formato OFX.");
-            return;
-        }
-    } else {
-        formData.append('arquivoOfx', arquivo);
-    }
+    formData.append('arquivoOfx', arquivo);
 
     try {
-        // Aponta para a API correta no Render usando a variável API_URL
         const resposta = await fetch(`${API_URL}/importar-ofx`, {
             method: 'POST',
             headers: {
