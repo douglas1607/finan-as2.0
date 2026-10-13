@@ -153,12 +153,13 @@ function autenticarToken(req, res, next) {
 
 // Rotas de Autenticação
 app.post('/api/cadastrar', async (req, res) => {
-    const { nome, email, senha } = req.body;
+    const { nome, email, senha, telefone } = req.body;
     if (!nome || !email || !senha) return res.status(400).json({ erro: "Preencha todos os campos." });
 
     try {
         const hashSenha = bcrypt.hashSync(senha, 8);
-        await pool.query(`INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)`, [nome, email, hashSenha]);
+        const telLimpo = telefone ? telefone.replace(/\D/g, '') : '';
+        await pool.query(`INSERT INTO usuarios (nome, email, senha, telefone) VALUES ($1, $2, $3, $4)`, [nome, email, hashSenha, telLimpo]);
         res.status(201).json({ mensagem: "Conta criada com sucesso!" });
     } catch (err) {
         res.status(400).json({ erro: "E-mail já cadastrado no sistema." });
@@ -192,6 +193,24 @@ app.post('/api/esqueci-senha', async (req, res) => {
         res.json({ mensagem: "Senha alterada com sucesso!" });
     } catch (err) {
         res.status(500).json({ erro: "Erro ao redefinir senha." });
+    }
+});
+
+// NOVA ROTA: Vincular/Atualizar Telefone pelo Painel Logado
+app.put('/api/usuario/telefone', autenticarToken, async (req, res) => {
+    const { telefone } = req.body;
+    if (!telefone) return res.status(400).json({ erro: "Informe o número de telefone." });
+
+    try {
+        const telLimpo = telefone.replace(/\D/g, '');
+        await pool.query(
+            `UPDATE usuarios SET telefone = $1 WHERE id = $2`,
+            [telLimpo, req.usuario.id]
+        );
+        res.json({ mensagem: "WhatsApp vinculado com sucesso ao seu perfil!" });
+    } catch (err) {
+        console.error("Erro ao atualizar telefone:", err.message);
+        res.status(500).json({ erro: "Erro ao atualizar telefone no banco de dados." });
     }
 });
 
@@ -618,6 +637,10 @@ async function iniciarBotWhatsApp() {
             const remetenteRaw = msg.key.remoteJid;
             const eGrupo = remetenteRaw.endsWith('@g.us');
 
+            // Identifica o número exato de quem enviou a mensagem (seja no privado ou no grupo)
+            const jidRemetenteReal = eGrupo ? (msg.key.participant || remetenteRaw) : remetenteRaw;
+            const numeroRemetente = jidRemetenteReal.replace(/[^0-9]/g, '');
+
             const textoMensagem = (
                 msg.message.conversation || 
                 msg.message.extendedTextMessage?.text || 
@@ -643,13 +666,28 @@ async function iniciarBotWhatsApp() {
                 }
             });
 
-            console.log(`💬 Comando financeiro recebido (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
+            console.log(`💬 Comando financeiro recebido de ${numeroRemetente} (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
 
-            // Busca o usuário no banco (ID 1 como padrão)
-            let idUsuarioFinal = 1;
-            const primeiroUser = await pool.query(`SELECT id FROM usuarios ORDER BY id ASC LIMIT 1`);
-            if (primeiroUser.rows.length > 0) {
-                idUsuarioFinal = primeiroUser.rows[0].id;
+            // ==========================================
+            // IDENTIFICAÇÃO INTELIGENTE DO USUÁRIO PELO TELEFONE
+            // ==========================================
+            let idUsuarioFinal = 1; // Padrão de segurança
+
+            try {
+                const sufixoTel = numeroRemetente.slice(-8);
+                const buscaUser = await pool.query(
+                    `SELECT id FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
+                    [`%${sufixoTel}%`]
+                );
+
+                if (buscaUser.rows.length > 0) {
+                    idUsuarioFinal = buscaUser.rows[0].id;
+                    console.log(`👤 Usuário identificado no banco: ID ${idUsuarioFinal}`);
+                } else {
+                    console.warn(`⚠️ Telefone ${numeroRemetente} não vinculado. Usando usuário ID 1 como fallback.`);
+                }
+            } catch (errUser) {
+                console.error("Erro ao buscar usuário por telefone:", errUser.message);
             }
 
             const promptIA = `
@@ -678,7 +716,6 @@ async function iniciarBotWhatsApp() {
                 }
             } catch (errIA) {
                 console.warn("⚠️ IA indisponível ou cota excedida. Usando extrator de emergência por Regex...");
-                // Extrator de emergência caso a cota do Gemini estoure
                 const numerosEncontrados = textoLimpo.match(/\d+([.,]\d+)?/);
                 if (numerosEncontrados) {
                     const valExt = parseFloat(numerosEncontrados[0].replace(',', '.'));
