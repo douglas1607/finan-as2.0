@@ -24,12 +24,14 @@ app.use(cors({
 
 app.use(express.json());
 
+// Servir arquivos estáticos (Frontend / PWA)
 app.use(express.static(path.join(__dirname)));
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Inicialização segura da IA
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -103,6 +105,7 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
+// Modelos atualizados do Gemini API
 const MODELOS_DISPONIVEIS = [
     'gemini-3.8-flash',
     'gemini-2.5-flash',
@@ -146,7 +149,7 @@ function autenticarToken(req, res, next) {
     });
 }
 
-// Autenticação
+// Rotas de Autenticação
 app.post('/api/cadastrar', async (req, res) => {
     const { nome, email, senha } = req.body;
     if (!nome || !email || !senha) return res.status(400).json({ erro: "Preencha todos os campos." });
@@ -190,7 +193,7 @@ app.post('/api/esqueci-senha', async (req, res) => {
     }
 });
 
-// Outras rotas padrão (Entradas, Aportes, Transações, Extrato, IA, Gastos Fixos, Ativos)...
+// Rotas de Entradas
 app.get('/api/entradas', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM entradas WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -216,6 +219,7 @@ app.delete('/api/entradas/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir entrada." }); }
 });
 
+// Rotas de Aportes
 app.get('/api/aportes', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM aportes WHERE usuario_id = $1 ORDER BY id ASC`, [req.usuario.id]);
@@ -241,6 +245,7 @@ app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir aporte." }); }
 });
 
+// Rotas de Transações
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -283,6 +288,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
+// Rotas de Gastos Fixos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM gastos_fixos WHERE usuario_id = $1 AND (pago = 0 OR pago IS NULL)`, [req.usuario.id]);
@@ -318,6 +324,7 @@ app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
+// Rotas de Ativos
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -359,11 +366,11 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
 // ==========================================================
 // GESTÃO MULTI-SESSÃO WHATSAPP POR USUÁRIO (BAILEYS ISOLADO)
 // ==========================================================
-const sessoesWhatsApp = {}; // Armazena { status, qr } por usuario_id
+const sessoesWhatsApp = {};
 
 async function iniciarBotUsuario(usuarioId) {
     if (sessoesWhatsApp[usuarioId]?.sock && sessoesWhatsApp[usuarioId]?.status === 'conectado') {
-        return; // Já está rodando
+        return;
     }
 
     const pastaAuth = path.join(__dirname, `auth_info_usuario_${usuarioId}`);
@@ -419,9 +426,13 @@ async function iniciarBotUsuario(usuarioId) {
             if (!textoMensagem) return;
 
             const textoMinusculo = textoMensagem.toLowerCase();
-            const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei'];
+            // Gatilhos expandidos para Saídas e Entradas/Vendas
+            const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
             if (!temGatilho) return;
+
+            // Identifica se a mensagem iniciou com um gatilho de entrada explícito
+            const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.startsWith(g));
 
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
@@ -430,17 +441,19 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             });
 
-            console.log(`💬 Comando recebido no WhatsApp do Usuário ID ${usuarioId}: "${textoLimpo}"`);
+            console.log(`💬 Comando financeiro recebido do Usuário ID ${usuarioId}: "${textoLimpo}"`);
 
             const promptIA = `
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
             Mensagem: "${textoLimpo}"
 
             Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
-            {"eGasto": true, "descricao": "Roupa", "valor": 45.00, "tipo": "saida"}
+            {"eGasto": true, "descricao": "Venda de dindin", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
 
-            Se for recebimento/Pix/salário use "tipo": "entrada".
-            Se não for um registro financeiro, responda: {"eGasto": false}
+            Regras:
+            - Se for recebimento, Pix recebido, salário, vendas ou entradas, use "tipo": "entrada".
+            - Se for compra, pagamento ou despesa, use "tipo": "saida".
+            - Se não for registro financeiro, responda: {"eGasto": false}
             `;
 
             let resultado = { eGasto: false };
@@ -458,7 +471,12 @@ async function iniciarBotUsuario(usuarioId) {
                 if (numerosEncontrados) {
                     const valExt = parseFloat(numerosEncontrados[0].replace(',', '.'));
                     let descExt = textoLimpo.replace(numerosEncontrados[0], '').replace(/reais|de|por|em/gi, '').trim();
-                    resultado = { eGasto: true, descricao: descExt || 'Gasto WhatsApp', valor: valExt, tipo: 'saida' };
+                    resultado = { 
+                        eGasto: true, 
+                        descricao: descExt || (eGatilhoEntrada ? 'Entrada WhatsApp' : 'Gasto WhatsApp'), 
+                        valor: valExt, 
+                        tipo: eGatilhoEntrada ? 'entrada' : 'saida' 
+                    };
                 }
             }
 
@@ -471,20 +489,28 @@ async function iniciarBotUsuario(usuarioId) {
                         `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
                         [usuarioId, resultado.descricao, valorNum, dataHoje]
                     );
-                    await sock.sendMessage(remetenteRaw, { text: `✅ *Entrada registrada no seu FinancIA!*\n💰 R$ ${valorNum.toFixed(2)} - ${resultado.descricao}` });
+                    
+                    // Mensagem elegante para Entradas/Receitas
+                    await sock.sendMessage(remetenteRaw, { 
+                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
+                    });
                 } else {
                     const descNorm = resultado.descricao.toLowerCase();
                     let cat = 'Compras';
-                    if (descNorm.includes('mercado') || descNorm.includes('padaria')) cat = 'Mercado';
-                    else if (descNorm.includes('gasolina') || descNorm.includes('uber')) cat = 'Transporte';
-                    else if (descNorm.includes('ifood') || descNorm.includes('lanche')) cat = 'Lazer';
-                    else if (descNorm.includes('aluguel') || descNorm.includes('luz')) cat = 'Casa';
+                    if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
+                    else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
+                    else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('pizza')) cat = 'Lazer';
+                    else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
                         [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
                     );
-                    await sock.sendMessage(remetenteRaw, { text: `📌 *Gasto registrado no seu FinancIA!*\n💸 R$ ${valorNum.toFixed(2)} [${cat}] - ${resultado.descricao}` });
+
+                    // Mensagem elegante para Gastos/Saídas
+                    await sock.sendMessage(remetenteRaw, { 
+                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
+                    });
                 }
             }
         } catch (err) {
@@ -493,7 +519,7 @@ async function iniciarBotUsuario(usuarioId) {
     });
 }
 
-// Rota para o usuário pegar o QR Code do SEU próprio perfil
+// Rota para o usuário obter o QR Code do SEU perfil
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     const usuarioId = req.usuario.id;
 
