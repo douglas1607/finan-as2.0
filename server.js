@@ -297,21 +297,14 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
         try {
             const promptIA = `
-            Você é um extrator financeiro de alta precisão. Analise o texto deste extrato bancário abaixo.
-            Extraia TODAS as transações financeiras (entradas e saídas) e retorne estritamente um array JSON puro (sem crases, sem markdown, sem texto adicional).
-            Cada item do array deve ter exatamente estas chaves:
-            - "descricao": string com o nome/histórico exato da transação
-            - "valor": número (positivo para entradas/Pix recebido/rendimentos, negativo para saídas/compras/pagamentos/Pix enviado)
+            Analise o extrato bancário abaixo e retorne APENAS um array JSON válido contendo as transações.
+            Cada objeto do array deve ter exatamente estas chaves:
+            - "descricao": string com o nome da transação
+            - "valor": número (positivo para entradas/Pix recebido, negativo para saídas/compras/pagamentos/Pix enviado)
             - "data": string no formato DD/MM/AAAA
 
-            Texto do Extrato:
+            Extrato:
             ${conteudoTexto}
-
-            Exemplo de formato esperado:
-            [
-              {"descricao": "Pix Recebido", "valor": 863.86, "data": "05/08/2026"},
-              {"descricao": "Dinheiro retirado Dizimo", "valor": -356.22, "data": "01/08/2026"}
-            ]
             `;
 
             const response = await ai.models.generateContent({
@@ -334,8 +327,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 transacoesParaProcessar = JSON.parse(textoResposta);
             }
         } catch (errIA) {
-            console.error("❌ Erro na IA ao ler extrato:", errIA);
-            return res.status(400).json({ erro: 'Erro ao interpretar o texto do extrato com a Inteligência Artificial.' });
+            console.error("❌ Erro detalhado na IA ao ler extrato:", errIA);
+            return res.status(400).json({ erro: `Erro ao interpretar com a IA: ${errIA.message}` });
         }
 
         if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
