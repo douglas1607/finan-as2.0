@@ -283,72 +283,105 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação Automática de Extrato OFX (Versão Robusta com Parser + Fallback Regex)
+// Rota Universal de Importação de Extratos (Aceita .OFX, .PDF, .TXT, .CSV com IA Gemini)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ erro: 'Nenhum arquivo de extrato enviado.' });
         }
 
-        const conteudoOfx = req.file.buffer.toString('utf8');
-        let transacoesEncontradas = [];
+        const mimeType = req.file.mimetype;
+        const nomeArquivo = req.file.originalname.toLowerCase();
+        let transacoesParaProcessar = [];
 
-        try {
-            const dadosParseados = ofx.parse(conteudoOfx);
-            transacoesEncontradas = dadosParseados.bankTransactionList || [];
-        } catch (parserErr) {
-            console.log("⚠️ Parser padrão falhou, ativando leitor alternativo por blocos OFX...");
-        }
+        // 1. CASO SEJA PDF (Processado via Gemini AI)
+        if (mimeType.includes('pdf') || nomeArquivo.endsWith('.pdf')) {
+            try {
+                const pdfBase64 = req.file.buffer.toString('base64');
+                const promptPDF = `
+                Você é um extrator financeiro de precisão. Analise este extrato bancário em PDF.
+                Extraia TODAS as movimentações financeiras presentes no documento e retorne APENAS um array JSON puro (sem markdown extra).
+                Regras:
+                - "valor": número positivo para entradas/Pix recebido, número negativo para saídas/gastos.
+                - "descricao": descrição clara da transação.
+                - "data": data no formato DD/MM/AAAA.
+                Formato exato de resposta:
+                [
+                  {"descricao": "Pix recebido João", "valor": 150.00, "data": "10/10/2026"},
+                  {"descricao": "Supermercado Moranguinho", "valor": -85.50, "data": "11/10/2026"}
+                ]
+                `;
 
-        if (!transacoesEncontradas || transacoesEncontradas.length === 0) {
-            const regexTransacao = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
-            let match;
-            while ((match = regexTransacao.exec(conteudoOfx)) !== null) {
-                const bloco = match[1];
-                
-                const getTag = (tag) => {
-                    const tagMatch = new RegExp(`<${tag}>(.*?)(?:<|<\\/|\n|\r)`, 'i').exec(bloco);
-                    return tagMatch ? tagMatch[1].trim() : '';
-                };
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: [
+                        { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
+                        { text: promptPDF }
+                    ]
+                });
 
-                const trnAmt = getTag('TRNAMT');
-                const dtPosted = getTag('DTPOSTED');
-                const memo = getTag('MEMO') || getTag('NAME') || 'Transação Bancária';
+                if (response && response.text) {
+                    const textoLimpo = response.text.replace(/```json|```/g, '').trim();
+                    transacoesParaProcessar = JSON.parse(textoLimpo);
+                }
+            } catch (errPDF) {
+                console.error("Erro ao ler PDF com Gemini:", errPDF);
+                return res.status(400).json({ erro: "Não foi possível extrair os dados deste PDF. Tente outro arquivo." });
+            }
+        } 
+        // 2. CASO SEJA OFX / TEXTO / CSV
+        else {
+            const conteudoTexto = req.file.buffer.toString('utf8');
+            try {
+                const dadosParseados = ofx.parse(conteudoTexto);
+                const listaOFX = dadosParseados.bankTransactionList || [];
+                transacoesParaProcessar = listaOFX.map(t => ({
+                    descricao: t.MEMO || t.NAME || 'Transação Bancária',
+                    valor: parseFloat((t.TRNAMT || '0').replace(',', '.')),
+                    data: t.DTPOSTED ? `${t.DTPOSTED.substring(6,8)}/${t.DTPOSTED.substring(4,6)}/${t.DTPOSTED.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
+                }));
+            } catch (e) {
+                const regexTransacao = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
+                let match;
+                while ((match = regexTransacao.exec(conteudoTexto)) !== null) {
+                    const bloco = match[1];
+                    const getTag = (t) => {
+                        const m = new RegExp(`<${t}>(.*?)(?:<|<\\/|\n|\r)`, 'i').exec(bloco);
+                        return m ? m[1].trim() : '';
+                    };
+                    const trnAmt = getTag('TRNAMT');
+                    const dtPosted = getTag('DTPOSTED');
+                    const memo = getTag('MEMO') || getTag('NAME') || 'Transação Bancária';
 
-                if (trnAmt && dtPosted) {
-                    transacoesEncontradas.push({
-                        TRNAMT: trnAmt,
-                        DTPOSTED: dtPosted,
-                        MEMO: memo
-                    });
+                    if (trnAmt) {
+                        transacoesParaProcessar.push({
+                            descricao: memo,
+                            valor: parseFloat(trnAmt.replace(',', '.')),
+                            data: dtPosted.length >= 8 ? `${dtPosted.substring(6,8)}/${dtPosted.substring(4,6)}/${dtPosted.substring(0,4)}` : new Date().toLocaleDateString('pt-BR')
+                        });
+                    }
                 }
             }
         }
 
-        if (!transacoesEncontradas || transacoesEncontradas.length === 0) {
-            return res.status(400).json({ erro: 'Não foi possível ler as transações deste arquivo. Verifique se é um OFX válido.' });
+        if (!transacoesParaProcessar || transacoesParaProcessar.length === 0) {
+            return res.status(400).json({ erro: 'Nenhuma transação encontrada no arquivo enviado.' });
         }
 
         let importadosCount = 0;
 
-        for (let item of transacoesEncontradas) {
-            const valorNum = parseFloat(item.TRNAMT.replace(',', '.'));
-            const descricao = item.MEMO || item.NAME || 'Transação Bancária';
-            
-            const rawData = item.DTPOSTED ? item.DTPOSTED.substring(0, 8) : '';
-            let dataFormatada = new Date().toLocaleDateString('pt-BR');
-            if (rawData.length === 8) {
-                dataFormatada = `${rawData.substring(6, 8)}/${rawData.substring(4, 6)}/${rawData.substring(0, 4)}`;
-            }
+        // 3. SALVA NO BANCO DE DADOS E CATEGORIZA
+        for (let item of transacoesParaProcessar) {
+            const valorNum = parseFloat(item.valor);
+            const descricao = item.descricao || 'Movimentação Bancária';
+            const dataFormatada = item.data || new Date().toLocaleDateString('pt-BR');
 
             if (valorNum > 0) {
-                // Entrada (Pix recebido, salário, etc.)
                 await pool.query(
                     'INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)',
                     [req.usuario.id, descricao, valorNum, dataFormatada]
                 );
             } else {
-                // Saída / Gasto Variável categorizado por palavras-chave
                 const valorPositivo = Math.abs(valorNum);
                 const descNorm = descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                 let categoriaIA = "Compras";
@@ -373,12 +406,12 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
         return res.json({ 
             sucesso: true, 
-            mensagem: `✨ ${importadosCount} transações importadas e categorizadas com sucesso!` 
+            mensagem: `✨ ${importadosCount} movimentações importadas e categorizadas com sucesso!` 
         });
 
     } catch (err) {
-        console.error("Erro ao processar arquivo de extrato:", err);
-        return res.status(500).json({ erro: 'Erro ao processar e ler o arquivo do extrato.' });
+        console.error("Erro ao processar extrato:", err);
+        return res.status(500).json({ erro: 'Erro interno ao ler e processar o extrato enviado.' });
     }
 });
 
