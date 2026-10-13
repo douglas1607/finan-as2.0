@@ -264,7 +264,10 @@ async function iniciarTickerCarrosselAoVivo() {
 
     function renderizarTicker() {
         track.innerHTML = '';
-        precosAtivos.forEach(item => {
+        // Duplicamos o array para garantir o loop infinito fluido e sem falhas no celular
+        const ativosDuplicados = [...precosAtivos, ...precosAtivos];
+
+        ativosDuplicados.forEach(item => {
             const div = document.createElement('div');
             div.className = 'ticker-item';
             div.innerHTML = `
@@ -715,7 +718,7 @@ function inicializarGraficos() {
                     data: [0], 
                     backgroundColor: '#00ff88',
                     borderRadius: 6,
-                    maxBarThickness: 50, // Barras mais encorpadas no desktop
+                    maxBarThickness: 50,
                     barPercentage: 0.6
                 }] 
             },
@@ -742,7 +745,7 @@ function inicializarGraficos() {
                     data: [0, 0], 
                     backgroundColor: ['#00ff88', '#ff6b6b'],
                     borderRadius: 6,
-                    maxBarThickness: 65, // Barras de Entrada e Saída mais largas e marcantes no desktop
+                    maxBarThickness: 65,
                     barPercentage: 0.55
                 }] 
             },

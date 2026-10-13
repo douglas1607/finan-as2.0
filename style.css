@@ -707,10 +707,14 @@ body.login-page {
     white-space: nowrap;
     animation: roletaTicker 25s linear infinite;
     padding-left: 20px;
+    width: max-content;
 }
 
-.ticker-carousel-container:hover .ticker-track {
-    animation-play-state: paused;
+/* A pausa no hover funciona APENAS em desktop com mouse (evita travar no celular) */
+@media (hover: hover) and (pointer: fine) {
+    .ticker-carousel-container:hover .ticker-track {
+        animation-play-state: paused;
+    }
 }
 
 .ticker-item {
@@ -722,6 +726,7 @@ body.login-page {
     border-radius: 10px;
     border: 1px solid var(--borda-vidro);
     font-size: 0.85rem;
+    flex-shrink: 0;
 }
 
 .ticker-nome { color: var(--verde-suave); font-weight: 700; }
