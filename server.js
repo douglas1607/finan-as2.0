@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { GoogleGenAI } = require('@google/genai');
 const multer = require('multer');
-const ofx = require('ofx-data-extractor');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,7 +29,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Inicialização segura da IA com a chave explícita
+// Inicialização segura da IA com a chave
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -104,7 +103,7 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Lista de modelos em ordem de prioridade para fallback automático contra o erro 503
+// Lista de modelos em ordem de prioridade para fallback automático contra erro 503
 const MODELOS_DISPONIVEIS = [
     'gemini-3.8-flash',
     'gemini-1.5-flash',
@@ -317,7 +316,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação protegida com fallback automático de modelos
+// Rota de Importação de Extrato + Detecção de Anomalias/Duplicadas
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -367,6 +366,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         }
 
         let importadosCount = 0;
+        let possiveisDuplicadas = [];
+        const conjuntoTransacoes = new Set();
 
         for (let item of transacoesParaProcessar) {
             const valorNum = parseFloat(item.valor);
@@ -374,6 +375,14 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             const dataFormatada = item.data || new Date().toLocaleDateString('pt-BR');
 
             if (isNaN(valorNum)) continue;
+
+            // Chave para identificar cobranças duplicadas idênticas
+            const chaveUnica = `${descricao.toLowerCase().trim()}_${valorNum}_${dataFormatada}`;
+            if (conjuntoTransacoes.has(chaveUnica)) {
+                possiveisDuplicadas.push(`${descricao} (R$ ${Math.abs(valorNum).toFixed(2)})`);
+            } else {
+                conjuntoTransacoes.add(chaveUnica);
+            }
 
             if (valorNum > 0) {
                 await pool.query(
@@ -403,14 +412,59 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             importadosCount++;
         }
 
+        let msgFinal = `✨ ${importadosCount} movimentações importadas e categorizadas com sucesso!`;
+        if (possiveisDuplicadas.length > 0) {
+            msgFinal += ` ⚠️ Atenção: Identificamos ${possiveisDuplicadas.length} cobranças repetidas no extrato.`;
+        }
+
         return res.json({ 
             sucesso: true, 
-            mensagem: `✨ ${importadosCount} movimentações importadas e categorizadas com sucesso!` 
+            mensagem: msgFinal,
+            duplicadas: possiveisDuplicadas
         });
 
     } catch (err) {
         console.error("Erro geral ao processar extrato:", err.message);
         return res.status(500).json({ erro: 'Erro interno ao processar o extrato enviado.' });
+    }
+});
+
+// NOVA ROTA: Resumo Inteligente do Mês feito pela IA (Estilo Pierre)
+app.get('/api/resumo-ia', autenticarToken, async (req, res) => {
+    try {
+        const resultTransacoes = await pool.query(
+            `SELECT categoria, SUM(valor) as total FROM transacoes WHERE usuario_id = $1 GROUP BY categoria`,
+            [req.usuario.id]
+        );
+        const resultEntradas = await pool.query(
+            `SELECT SUM(valor) as total FROM entradas WHERE usuario_id = $1`,
+            [req.usuario.id]
+        );
+
+        const gastosPorCategoria = resultTransacoes.rows;
+        const totalEntradas = resultEntradas.rows[0]?.total || 0;
+
+        if (gastosPorCategoria.length === 0) {
+            return res.json({ resumo: "Você ainda não possui movimentações registradas neste período. Importe seu extrato para gerar sua análise!" });
+        }
+
+        const promptAnalise = `
+        Aja como um assistente financeiro pessoal inteligente e amigável.
+        Analise o resumo de gastos e entradas do usuário e escreva um pequeno parágrafo motivador (máximo 3 frases) em tom consultivo:
+        - Total de Entradas: R$ ${parseFloat(totalEntradas).toFixed(2)}
+        - Gastos por Categoria: ${JSON.stringify(gastosPorCategoria)}
+
+        Dê uma dica direta e mencione em qual categoria ele mais gastou ou se ele economizou.
+        `;
+
+        const response = await chamarComRetry(promptAnalise);
+        const textoResumo = response && response.text ? response.text.trim() : "Análise não disponível no momento.";
+
+        res.json({ resumo: textoResumo });
+
+    } catch (err) {
+        console.error("Erro ao gerar resumo pela IA:", err);
+        res.status(500).json({ erro: "Erro ao gerar resumo com Inteligência Artificial." });
     }
 });
 
