@@ -1,3 +1,6 @@
 node-modules/
 .env
 financia.db
+auth_info_baileys/
+*.db
+*.log
