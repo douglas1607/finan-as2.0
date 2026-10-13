@@ -335,7 +335,7 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         try {
             const promptIA = `
             Analise o extrato bancário abaixo e retorne APENAS um array JSON válido contendo as transações.
-            Cada objeto do array deve have exatamente estas chaves:
+            Cada objeto do array deve ter exatamente estas chaves:
             - "descricao": string com o nome da transação
             - "valor": número (positivo para entradas/Pix recebido, negativo para saídas/compras/pagamentos/Pix enviado)
             - "data": string no formato DD/MM/AAAA
@@ -611,33 +611,31 @@ async function iniciarBotWhatsApp() {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message) return;
+        try {
+            const msg = m.messages[0];
+            if (!msg || !msg.message) return;
 
-        const remetenteRaw = msg.key.remoteJid;
-        const eGrupo = remetenteRaw.endsWith('@g.us');
+            const remetenteRaw = msg.key.remoteJid;
+            const eGrupo = remetenteRaw.endsWith('@g.us');
 
-        // Identifica corretamente o remetente em grupos ou chat privado
-        const jidRemetenteReal = eGrupo ? (msg.key.participant || remetenteRaw) : remetenteRaw;
-        const numeroRemetente = jidRemetenteReal.replace(/[^0-9]/g, '').slice(-8);
+            const textoMensagem = (
+                msg.message.conversation || 
+                msg.message.extendedTextMessage?.text || 
+                msg.message.imageMessage?.caption || 
+                ''
+            ).trim();
 
-        const textoMensagem = (msg.message.conversation || 
-                             msg.message.extendedTextMessage?.text || 
-                             msg.message.imageMessage?.caption || '').trim();
+            if (!textoMensagem) return;
 
-        if (textoMensagem) {
-            // ==========================================
-            // FILTRO DE GATILHO (EVITA CONVERSAS NORMAIS)
-            // ==========================================
+            // Verificação flexível de Gatilhos (aceita '!', '/', 'paguei', 'gasto', 'comprei')
+            const textoMinusculo = textoMensagem.toLowerCase();
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei'];
-            const temGatilho = gatilhos.some(g => textoMensagem.toLowerCase().startsWith(g));
+            
+            const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
 
-            if (!temGatilho) {
-                // Ignora qualquer mensagem que não comece com os comandos/gatilhos
-                return;
-            }
+            if (!temGatilho) return; // Ignora conversas normais
 
-            // Remove o gatilho do texto antes de enviar para a IA processar
+            // Limpa o gatilho e espaços extras
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
                 if (textoLimpo.toLowerCase().startsWith(g)) {
@@ -645,79 +643,73 @@ async function iniciarBotWhatsApp() {
                 }
             });
 
-            console.log(`💬 Comando financeiro recebido de ${numeroRemetente} (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
+            console.log(`💬 Comando financeiro recebido (${eGrupo ? 'Grupo' : 'Privado'}): "${textoLimpo}"`);
 
-            try {
-                // Busca o usuário pelo telefone no banco ou usa o primeiro usuário como padrão (ID 1)
-                let idUsuarioFinal = 1;
-
-                const buscador = await pool.query(
-                    `SELECT id, nome FROM usuarios WHERE telefone LIKE $1 LIMIT 1`,
-                    [`%${numeroRemetente}%`]
-                );
-
-                if (buscador.rows.length > 0) {
-                    idUsuarioFinal = buscador.rows[0].id;
-                } else {
-                    const primeiroUser = await pool.query(`SELECT id FROM usuarios ORDER BY id ASC LIMIT 1`);
-                    if (primeiroUser.rows.length > 0) {
-                        idUsuarioFinal = primeiroUser.rows[0].id;
-                    }
-                }
-
-                const promptIA = `
-                Analise o texto abaixo enviado por um usuário no WhatsApp e verifique se é um registro de gasto ou entrada financeira.
-                Texto: "${textoLimpo}"
-
-                Se for um gasto ou receita, responda APENAS um JSON no formato:
-                {"eGasto": true, "descricao": "nome curto do gasto", "valor": 00.00, "tipo": "saida"} 
-                (use "tipo": "entrada" se for um Pix recebido/salário).
-
-                Se NÃO for um registro financeiro, responda APENAS:
-                {"eGasto": false}
-                `;
-
-                const respostaIA = await chamarComRetry(promptIA);
-
-                if (respostaIA && respostaIA.text) {
-                    let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const resultado = JSON.parse(jsonLimpo);
-
-                    if (resultado.eGasto) {
-                        const valorNum = parseFloat(resultado.valor);
-                        const dataHoje = new Date().toLocaleDateString('pt-BR');
-
-                        if (resultado.tipo === 'entrada') {
-                            await pool.query(
-                                `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                                [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
-                            );
-                            
-                            await sock.sendMessage(remetenteRaw, { 
-                                text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
-                            });
-                        } else {
-                            const descNorm = resultado.descricao.toLowerCase();
-                            let cat = 'Compras';
-                            if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
-                            else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
-                            else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante')) cat = 'Lazer';
-                            else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
-
-                            await pool.query(
-                                `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                                [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
-                            );
-
-                            await sock.sendMessage(remetenteRaw, { 
-                                text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
-                            });
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("Erro ao processar mensagem do WhatsApp:", err.message);
+            // Busca o usuário no banco (ID 1 como padrão para o seu painel)
+            let idUsuarioFinal = 1;
+            const primeiroUser = await pool.query(`SELECT id FROM usuarios ORDER BY id ASC LIMIT 1`);
+            if (primeiroUser.rows.length > 0) {
+                idUsuarioFinal = primeiroUser.rows[0].id;
             }
+
+            const promptIA = `
+            Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
+            Mensagem: "${textoLimpo}"
+
+            Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
+            {"eGasto": true, "descricao": "Gasolina", "valor": 50.00, "tipo": "saida"}
+
+            Se for recebimento/Pix/salário use "tipo": "entrada".
+            Se não for um registro financeiro, responda: {"eGasto": false}
+            `;
+
+            const respostaIA = await chamarComRetry(promptIA);
+
+            if (respostaIA && respostaIA.text) {
+                let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+                
+                const inicio = jsonLimpo.indexOf('{');
+                const fim = jsonLimpo.lastIndexOf('}');
+                if (inicio !== -1 && fim !== -1) {
+                    jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
+                }
+
+                const resultado = JSON.parse(jsonLimpo);
+
+                if (resultado.eGasto) {
+                    const valorNum = parseFloat(resultado.valor);
+                    const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+                    if (resultado.tipo === 'entrada') {
+                        await pool.query(
+                            `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
+                            [idUsuarioFinal, resultado.descricao, valorNum, dataHoje]
+                        );
+                        
+                        await sock.sendMessage(remetenteRaw, { 
+                            text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
+                        });
+                    } else {
+                        const descNorm = resultado.descricao.toLowerCase();
+                        let cat = 'Compras';
+                        if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
+                        else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
+                        else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('pizza')) cat = 'Lazer';
+                        else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
+
+                        await pool.query(
+                            `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
+                            [idUsuarioFinal, resultado.descricao, valorNum, cat, dataHoje]
+                        );
+
+                        await sock.sendMessage(remetenteRaw, { 
+                            text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Erro no processamento do WhatsApp:", err.message);
         }
     });
 }
