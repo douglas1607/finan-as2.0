@@ -482,7 +482,7 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             }
 
-            // Força a entrada se o gatilho inicial foi de entrada
+            // Força o tipo de entrada se iniciou com o gatilho de receita/venda
             if (eGatilhoEntrada) {
                 resultado.tipo = 'entrada';
             }
@@ -497,6 +497,7 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, dataHoje]
                     );
                     
+                    // Mensagem formatada e estilizada de Entrada
                     await sock.sendMessage(remetenteRaw, { 
                         text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
                     });
@@ -513,6 +514,7 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
                     );
 
+                    // Mensagem formatada e estilizada de Gasto
                     await sock.sendMessage(remetenteRaw, { 
                         text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
                     });
