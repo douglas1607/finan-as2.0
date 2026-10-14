@@ -206,17 +206,19 @@
                 </div>
             </section>
 
-            <section class="card" style="grid-column: span 6; display: flex; flex-direction: column; justify-content: space-between;">
+           <section class="card" style="grid-column: span 6; display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
                     <div class="card-header-flex">
                         <h2>Balanço: Entradas vs Saídas</h2>
                         <span class="status-badge" id="badgeStatusGasto">🟢 Saudável</span>
                     </div>
-                    <div class="chart-container" style="height: 130px;">
+
+                    <!-- Gráfico com altura maior para preencher o topo -->
+                    <div class="chart-container" style="height: 200px;">
                         <canvas id="balancoChart"></canvas>
                     </div>
 
-                    <div class="termometro-box" style="margin-top: 10px;">
+                    <div class="termometro-box" style="margin-top: 15px;">
                         <div class="meta-info" style="margin: 0 0 4px 0;">
                             <span>Comprometimento do Orçamento:</span>
                             <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
@@ -226,14 +228,22 @@
                                 style="width: 0%; background-color: var(--verde-destaque);"></div>
                         </div>
                         <small id="alertaGastoTexto"
-                            style="display: block; margin-top: 4px; font-size: 0.73rem; color: var(--texto-secundario);">
+                            style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
                             💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos e reserva.
                         </small>
                     </div>
+
+                    <!-- PAINEL CENTRAL IA PARA PREENCHER O ESPAÇO COM INTELIGÊNCIA -->
+                    <div style="margin-top: 15px; padding: 12px; background: rgba(0, 255, 136, 0.05); border: 1px dashed rgba(0, 255, 136, 0.3); border-radius: 10px;">
+                        <span style="font-size: 0.75rem; color: #00ff88; font-weight: 700; display: block; margin-bottom: 4px;">🤖 Sugestão de Alocação da IA:</span>
+                        <p id="aiRecommendationTextBalanco" style="font-size: 0.8rem; color: #e5e7eb; margin: 0; line-height: 1.4;">
+                            Analisando suas entradas e saídas para sugerir aportes inteligentes...
+                        </p>
+                    </div>
                 </div>
 
-                <!-- 4 MÉTRICAS EXECUTIVAS PARA PREENCHER O ESPAÇO VAZIO -->
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+                <!-- 4 CAIXINHAS NO RODAPÉ -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
                     <div style="background: rgba(0,0,0,0.25); padding: 8px 4px; border-radius: 8px; text-align: center; border: 1px solid rgba(16, 185, 129, 0.2);">
                         <span style="font-size: 0.65rem; color: #9CA3AF; display: block; margin-bottom: 2px;">📥 Entradas</span>
                         <strong id="cardResumoEntradas" class="privacy-target" style="font-size: 0.85rem; color: #10B981;">R$ 0,00</strong>
@@ -252,7 +262,6 @@
                     </div>
                 </div>
             </section>
-
             <section class="card expense-tracker">
                 <div class="card-header-flex">
                     <h2>Gastos Variáveis</h2>

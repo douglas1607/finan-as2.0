@@ -874,7 +874,7 @@ function atualizarGraficoBalanco() {
     chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
 
-    // Alimentar os 4 blocos de métricas no rodapé do card
+    // Alimentar as 4 caixinhas de resumo no rodapé do card
     if (document.getElementById('cardResumoEntradas')) document.getElementById('cardResumoEntradas').innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoSaidas')) document.getElementById('cardResumoSaidas').innerText = `R$ ${totalGastosConsumo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoAportes')) document.getElementById('cardResumoAportes').innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
