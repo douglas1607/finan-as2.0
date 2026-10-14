@@ -289,6 +289,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
 });
 
 // Nova rota adicionada para importar extratos (PDF convertidos, TXT ou OFX)
+// Rota robusta para importar extratos (PDF convertidos, TXT ou OFX)
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     try {
         if (!req.file) {
@@ -306,21 +307,31 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         ${conteudoArquivo}
         """
 
-        Responda EXATAMENTE e APENAS um JSON contendo um array de objetos com o formato abaixo (sem marcadores markdown):
+        Responda EXATAMENTE e APENAS um JSON contendo um array de objetos com o formato abaixo (sem marcadores markdown, sem texto extra):
         [
           {"descricao": "Supermercado Extra", "valor": 150.50, "categoria": "Mercado"},
           {"descricao": "Posto Ipiranga", "valor": 100.00, "categoria": "Transporte"}
         ]
-        Categorias permitidas: Mercado, Casa, Lazer, Transporte, Compras. Se não tiver certeza, use Compras.
+        Categorias permitidas estritamente: Mercado, Casa, Lazer, Transporte, Compras. Se não tiver certeza, use Compras.
         `;
 
         const respostaIA = await chamarComRetry(prompt);
-        let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+        let textoResposta = respostaIA.text || '';
+        let jsonLimpo = textoResposta.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+        
         const inicio = jsonLimpo.indexOf('[');
         const fim = jsonLimpo.lastIndexOf(']');
-        if (inicio !== -1 && fim !== -1) jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
+        if (inicio !== -1 && fim !== -1) {
+            jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
+        }
 
-        const transacoesExtraidas = JSON.parse(jsonLimpo);
+        let transacoesExtraidas = [];
+        try {
+            transacoesExtraidas = JSON.parse(jsonLimpo);
+        } catch (e) {
+            console.error("Erro ao converter JSON da IA:", jsonLimpo);
+            return res.status(400).json({ erro: "A IA não conseguiu estruturar as transações deste arquivo corretamente." });
+        }
 
         if (!Array.isArray(transacoesExtraidas) || transacoesExtraidas.length === 0) {
             return res.status(400).json({ erro: "Não foi possível identificar transações válidas neste arquivo." });
@@ -341,11 +352,10 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
         res.json({ mensagem: `✅ ${transacoesExtraidas.length} transações importadas e categorizadas com sucesso!` });
     } catch (err) {
-        console.error("Erro na importação:", err);
-        res.status(500).json({ erro: "Erro ao processar arquivo de extrato." });
+        console.error("Erro crítico na importação:", err);
+        res.status(500).json({ erro: "Erro interno ao processar arquivo de extrato no servidor." });
     }
 });
-
 // Rotas de Gastos Fixos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
