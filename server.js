@@ -425,15 +425,17 @@ async function iniciarBotUsuario(usuarioId) {
 
             if (!textoMensagem) return;
 
+            // Converter tudo para minúsculo para checar gatilhos sem diferenciar maiúsculas/minúsculas
             const textoMinusculo = textoMensagem.toLowerCase();
-            // Gatilhos expandidos para Saídas e Entradas/Vendas
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
+            
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
             if (!temGatilho) return;
 
-            // Identifica se a mensagem iniciou com um gatilho de entrada explícito
+            // Identifica se começou com qualquer gatilho de receita/venda (case-insensitive)
             const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.startsWith(g));
 
+            // Limpa o gatilho da mensagem
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
                 if (textoLimpo.toLowerCase().startsWith(g)) {
@@ -441,7 +443,7 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             });
 
-            console.log(`💬 Comando financeiro recebido do Usuário ID ${usuarioId}: "${textoLimpo}"`);
+            console.log(`💬 Comando financeiro recebido do Usuário ID ${usuarioId}: "${textoLimpo}" (Tipo detectado: ${eGatilhoEntrada ? 'Entrada' : 'Gasto'})`);
 
             const promptIA = `
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
@@ -451,7 +453,7 @@ async function iniciarBotUsuario(usuarioId) {
             {"eGasto": true, "descricao": "Venda de dindin", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
 
             Regras:
-            - Se for recebimento, Pix recebido, salário, vendas ou entradas, use "tipo": "entrada".
+            - Se o tipo indicado for "entrada" ou se a mensagem for de vendas/recebimentos/PIX/salário, use "tipo": "entrada".
             - Se for compra, pagamento ou despesa, use "tipo": "saida".
             - Se não for registro financeiro, responda: {"eGasto": false}
             `;
@@ -480,6 +482,11 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             }
 
+            // Força a entrada se o gatilho inicial foi de entrada
+            if (eGatilhoEntrada) {
+                resultado.tipo = 'entrada';
+            }
+
             if (resultado.eGasto) {
                 const valorNum = parseFloat(resultado.valor);
                 const dataHoje = new Date().toLocaleDateString('pt-BR');
@@ -490,7 +497,6 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, dataHoje]
                     );
                     
-                    // Mensagem elegante para Entradas/Receitas
                     await sock.sendMessage(remetenteRaw, { 
                         text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
                     });
@@ -507,7 +513,6 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
                     );
 
-                    // Mensagem elegante para Gastos/Saídas
                     await sock.sendMessage(remetenteRaw, { 
                         text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
                     });
