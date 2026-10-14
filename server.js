@@ -425,17 +425,14 @@ async function iniciarBotUsuario(usuarioId) {
 
             if (!textoMensagem) return;
 
-            // Converter tudo para minúsculo para checar gatilhos sem diferenciar maiúsculas/minúsculas
             const textoMinusculo = textoMensagem.toLowerCase();
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
             
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
             if (!temGatilho) return;
 
-            // Identifica se começou com qualquer gatilho de receita/venda (case-insensitive)
             const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.startsWith(g));
 
-            // Limpa o gatilho da mensagem
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
                 if (textoLimpo.toLowerCase().startsWith(g)) {
@@ -482,7 +479,6 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             }
 
-            // Força o tipo de entrada se iniciou com o gatilho de receita/venda
             if (eGatilhoEntrada) {
                 resultado.tipo = 'entrada';
             }
@@ -497,7 +493,6 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, dataHoje]
                     );
                     
-                    // Mensagem formatada e estilizada de Entrada
                     await sock.sendMessage(remetenteRaw, { 
                         text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
                     });
@@ -514,7 +509,6 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
                     );
 
-                    // Mensagem formatada e estilizada de Gasto
                     await sock.sendMessage(remetenteRaw, { 
                         text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
                     });

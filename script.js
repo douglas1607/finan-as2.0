@@ -185,6 +185,7 @@ async function carregarAtivosPortfolio() {
 
         const patrimonioGeral = totalAportesAcumulado + totalCripto + totalAcoes + totalFiis;
         atualizarPatrimonioTotalAuto(patrimonioGeral);
+        atualizarGraficoBalanco();
 
     } catch (err) {
         console.log("Erro ao carregar ativos.");
@@ -873,11 +874,18 @@ function atualizarGraficoBalanco() {
     chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
 
+    // Alimentar os 4 blocos de métricas no rodapé do card
+    if (document.getElementById('cardResumoEntradas')) document.getElementById('cardResumoEntradas').innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    if (document.getElementById('cardResumoSaidas')) document.getElementById('cardResumoSaidas').innerText = `R$ ${totalGastosConsumo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    if (document.getElementById('cardResumoAportes')) document.getElementById('cardResumoAportes').innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    if (document.getElementById('cardResumoLiquido')) document.getElementById('cardResumoLiquido').innerText = `R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
     const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : 0;
     const barraGasto = document.getElementById('barraGastoProporcao');
     const textoGasto = document.getElementById('textoPorcentagemGastos');
     const badgeStatus = document.getElementById('badgeStatusGasto');
     const alertaGastoTexto = document.getElementById('alertaGastoTexto');
+    const aiRecommendationText = document.getElementById('aiRecommendationText');
 
     if (barraGasto && textoGasto && badgeStatus) {
         const larguraVisual = Math.min(Math.round(pctComprometido), 100);
@@ -890,16 +898,25 @@ function atualizarGraficoBalanco() {
             badgeStatus.innerText = '🟢 Saudável';
             badgeStatus.style.color = '#00ff88';
             if (alertaGastoTexto) alertaGastoTexto.innerText = `💡 Excelente! Você ainda tem R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} livres na conta após gastar e investir.`;
+            
+            if (aiRecommendationText && saldoLivreReal > 0) {
+                const recReserva = (saldoLivreReal * 0.3).toFixed(2);
+                const recAtivos = (saldoLivreReal * 0.5).toFixed(2);
+                const recCaixa = (saldoLivreReal * 0.2).toFixed(2);
+                aiRecommendationText.innerText = `💡 Sugestão IA: Você possui R$ ${saldoLivreReal.toFixed(2)} livres. Recomendamos destinar R$ ${recReserva} para Reserva, R$ ${recAtivos} para novos Ativos na B3 e manter R$ ${recCaixa} no Caixa Livre para emergências.`;
+            }
         } else if (pctComprometido <= 90) {
             barraGasto.style.backgroundColor = '#f1c40f';
             badgeStatus.innerText = '🟡 Atenção';
             badgeStatus.style.color = '#f1c40f';
             if (alertaGastoTexto) alertaGastoTexto.innerText = `⚠️ Boa gestão de aportes, mas o saldo livre baixou para R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+            if (aiRecommendationText) aiRecommendationText.innerText = `⚠️ Atenção aos gastos variáveis: seu caixa livre está reduzido. Priorize manter o saldo para compromissos essenciais.`;
         } else {
             barraGasto.style.backgroundColor = '#ff6b6b';
             badgeStatus.innerText = '🔴 Extremo';
             badgeStatus.style.color = '#ff6b6b';
             if (alertaGastoTexto) alertaGastoTexto.innerText = `🚨 ALERTA: O compromisso total atingiu ${pctComprometido.toFixed(1)}%. Saldo livre atual: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+            if (aiRecommendationText) aiRecommendationText.innerText = `🚨 Alerta Vermelho: Seus gastos e aportes ultrapassaram a receita. Evite novas compras até equilibrar as entradas.`;
         }
     }
 }

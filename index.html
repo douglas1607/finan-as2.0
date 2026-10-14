@@ -206,29 +206,50 @@
                 </div>
             </section>
 
-            <section class="card" style="grid-column: span 6;">
-                <div class="card-header-flex">
-                    <h2>Balanço: Entradas vs Saídas</h2>
-                    <span class="status-badge" id="badgeStatusGasto">🟢 Saudável</span>
-                </div>
-                <div class="chart-container" style="height: 140px;">
-                    <canvas id="balancoChart"></canvas>
+            <section class="card" style="grid-column: span 6; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <div class="card-header-flex">
+                        <h2>Balanço: Entradas vs Saídas</h2>
+                        <span class="status-badge" id="badgeStatusGasto">🟢 Saudável</span>
+                    </div>
+                    <div class="chart-container" style="height: 130px;">
+                        <canvas id="balancoChart"></canvas>
+                    </div>
+
+                    <div class="termometro-box" style="margin-top: 10px;">
+                        <div class="meta-info" style="margin: 0 0 4px 0;">
+                            <span>Comprometimento do Orçamento:</span>
+                            <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-bar" id="barraGastoProporcao"
+                                style="width: 0%; background-color: var(--verde-destaque);"></div>
+                        </div>
+                        <small id="alertaGastoTexto"
+                            style="display: block; margin-top: 4px; font-size: 0.73rem; color: var(--texto-secundario);">
+                            💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos e reserva.
+                        </small>
+                    </div>
                 </div>
 
-                <div class="termometro-box" style="margin-top: 15px;">
-                    <div class="meta-info" style="margin: 0 0 5px 0;">
-                        <span>Comprometimento do Orçamento:</span>
-                        <strong id="textoPorcentagemGastos">0,0% de gastos</strong>
+                <!-- 4 MÉTRICAS EXECUTIVAS PARA PREENCHER O ESPAÇO VAZIO -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+                    <div style="background: rgba(0,0,0,0.25); padding: 8px 4px; border-radius: 8px; text-align: center; border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <span style="font-size: 0.65rem; color: #9CA3AF; display: block; margin-bottom: 2px;">📥 Entradas</span>
+                        <strong id="cardResumoEntradas" class="privacy-target" style="font-size: 0.85rem; color: #10B981;">R$ 0,00</strong>
                     </div>
-                    <div class="progress-track">
-                        <div class="progress-bar" id="barraGastoProporcao"
-                            style="width: 0%; background-color: var(--verde-destaque);"></div>
+                    <div style="background: rgba(0,0,0,0.25); padding: 8px 4px; border-radius: 8px; text-align: center; border: 1px solid rgba(239, 68, 68, 0.2);">
+                        <span style="font-size: 0.65rem; color: #9CA3AF; display: block; margin-bottom: 2px;">📤 Saídas</span>
+                        <strong id="cardResumoSaidas" class="privacy-target" style="font-size: 0.85rem; color: #EF4444;">R$ 0,00</strong>
                     </div>
-                    <small id="alertaGastoTexto"
-                        style="display: block; margin-top: 6px; font-size: 0.75rem; color: var(--texto-secundario);">
-                        💡 Mantenha seus gastos abaixo de 70% das entradas para garantir ao menos 30% para investimentos
-                        e reserva.
-                    </small>
+                    <div style="background: rgba(0,0,0,0.25); padding: 8px 4px; border-radius: 8px; text-align: center; border: 1px solid rgba(255, 183, 0, 0.2);">
+                        <span style="font-size: 0.65rem; color: #9CA3AF; display: block; margin-bottom: 2px;">🛡️ Aportes</span>
+                        <strong id="cardResumoAportes" class="privacy-target" style="font-size: 0.85rem; color: #ffb700;">R$ 0,00</strong>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.25); padding: 8px 4px; border-radius: 8px; text-align: center; border: 1px solid rgba(0, 210, 255, 0.2);">
+                        <span style="font-size: 0.65rem; color: #9CA3AF; display: block; margin-bottom: 2px;">💎 Livre</span>
+                        <strong id="cardResumoLiquido" class="privacy-target" style="font-size: 0.85rem; color: #00d2ff;">R$ 0,00</strong>
+                    </div>
                 </div>
             </section>
 
