@@ -111,11 +111,11 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Modelos oficiais suportados pelo SDK
+// Modelos oficiais suportados pelo SDK atual do Gemini
 const MODELOS_DISPONIVEIS = [
-    'gemini-3.8-flash',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
+    'gemini-1.5-flash'
 ];
 
 async function chamarComRetry(prompt) {
@@ -131,7 +131,7 @@ async function chamarComRetry(prompt) {
                 return response;
             } catch (err) {
                 ultimoErro = err;
-                console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}): ${err.message}`);
+                console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}):${err.message}`);
                 if (err.message.includes('503') || err.message.includes('UNAVAILABLE') || err.message.includes('429')) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
@@ -265,94 +265,43 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     if (!descricao || isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
 
     const descNorm = descricao.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    let categoriaIA = "Compras";
+    let categoria = "Compras";
 
-
-
-    // 1. TRANSPORTE (Uber, 99, Moto, Parcela, Mecânica, Gasolina)
     if (
-        descNorm.includes('uber') ||
-        descNorm.includes('99') ||
-        descNorm.includes('posto') ||
-        descNorm.includes('gasolina') ||
-        descNorm.includes('combustivel') ||
-        descNorm.includes('combustível') ||
-        descNorm.includes('moto') ||
-        descNorm.includes('mecanica') ||
-        descNorm.includes('mecânica') ||
-        descNorm.includes('oficina') ||
-        descNorm.includes('manutencao') ||
-        descNorm.includes('manutenção') ||
-        descNorm.includes('capacete') ||
-        descNorm.includes('pneu') ||
-        descNorm.includes('troca de oleo') ||
-        descNorm.includes('óleo') ||
-        descNorm.includes('pedagio') ||
-        descNorm.includes('pedágio') ||
-        descNorm.includes('estacionamento')
+        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') || 
+        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') || 
+        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') || 
+        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') || 
+        descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
     ) {
         categoria = 'Transporte';
-    }
-    // 2. LAZER
-    else if (
-        descNorm.includes('ifood') ||
-        descNorm.includes('restaurante') ||
-        descNorm.includes('lanche') ||
-        descNorm.includes('acai') ||
-        descNorm.includes('açaí') ||
-        descNorm.includes('pizza') ||
-        descNorm.includes('cinema') ||
-        descNorm.includes('streaming') ||
-        descNorm.includes('jantar') ||
-        descNorm.includes('bar')
+    } else if (
+        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') || 
+        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') || 
+        descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar')
     ) {
         categoria = 'Lazer';
-    }
-    // 3. MERCADO
-    else if (
-        descNorm.includes('mercado') ||
-        descNorm.includes('supermercado') ||
-        descNorm.includes('agua pra beber') ||
-        descNorm.includes('água pra beber') ||
-        descNorm.includes('padaria') ||
-        descNorm.includes('paes') ||
-        descNorm.includes('pães') ||
-        descNorm.includes('feira') ||
-        descNorm.includes('horti') ||
-        descNorm.includes('açougue') ||
-        descNorm.includes('acougue') ||
-        descNorm.includes('atacadao') ||
-        descNorm.includes('atacadão')
+    } else if (
+        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') || 
+        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('feira') || 
+        descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
     ) {
         categoria = 'Mercado';
-    }
-    // 4. CASA & SERVIÇOS
-    else if (
-        descNorm.includes('luz') ||
-        descNorm.includes('agua') ||
-        descNorm.includes('água') ||
-        descNorm.includes('internet') ||
-        descNorm.includes('enel') ||
-        descNorm.includes('cagece') ||
-        descNorm.includes('aluguel') ||
-        descNorm.includes('condominio') ||
-        descNorm.includes('acessorios') ||
-        descNorm.includes('acessórios') ||
-        descNorm.includes('condomínio')
+    } else if (
+        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || 
+        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') || 
+        descNorm.includes('condominio') || descNorm.includes('acessorios')
     ) {
         categoria = 'Casa';
     }
-    // 5. COMPRAS (PADRÃO)
-    else {
-        categoria = 'Compras';
-    }
+
     const dataHoje = new Date().toLocaleDateString('pt-BR');
     try {
         const result = await pool.query(
             `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [req.usuario.id, descricao, valorNum, categoriaIA, dataHoje]
+            [req.usuario.id, descricao, valorNum, categoria, dataHoje]
         );
-        res.status(201).json({ id: result.rows[0].id, descricao, valor: valorNum, categoria: categoriaIA, data: dataHoje });
+        res.status(201).json({ id: result.rows[0].id, descricao, valor: valorNum, categoria, data: dataHoje });
     } catch (err) { res.status(500).json({ erro: "Erro ao salvar transação." }); }
 });
 
@@ -364,7 +313,6 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
 });
 
 // Rota de Importação de Extratos com IA
-// Rota de Importação de Extratos - Versão com Modelos Corrigidos e Fallback Completo
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     console.log("📥 [EXTRATO] Processando arquivo enviado...");
     try {
@@ -372,7 +320,6 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             return res.status(400).json({ erro: "Nenhum arquivo enviado." });
         }
 
-        // Obtém o texto do PDF e limpa resíduos
         let conteudoArquivo = req.file.buffer.toString('utf8')
             .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F]/g, "")
             .slice(0, 15000);
@@ -382,16 +329,15 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
         let transacoesExtraidas = [];
 
-        // TENTATIVA 1: IA GEMINI
         try {
             const prompt = `
             Você é um assistente financeiro especialista. Analise o extrato bancário em texto abaixo e extraia TODAS as transações reais de entrada e saída.
 
             REGRAS DE CATEGORIZAÇÃO:
             - "Mercado": Supermercados, padarias, açougues, hortifruti, atacadões.
-            - "Transporte": Uber, 99, postos de gasolina, pedágio.
+            - "Transporte": Uber, 99, postos de gasolina, pedágio, pneu, moto, mecânica.
             - "Casa": Luz, água, internet, gás, aluguel, condomínio.
-            - "Lazer": iFood, restaurantes, lanchonetes, açaí, cinema, assinaturas.
+            - "Lazer": iFood, restaurantes, lanchonetes, açaí, jantar, streaming.
             - "Compras": Compras gerais, farmácia, vestuário, PIX enviados.
             - "Entrada": Salários, PIX recebidos, rendimentos, vendas.
 
@@ -411,8 +357,6 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
             const respostaIA = await chamarComRetry(prompt);
             let textoResposta = respostaIA.text || '';
-            console.log("🤖 [EXTRATO] Resposta da IA recebida!");
-
             let jsonLimpo = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
             const inicio = jsonLimpo.indexOf('[');
             const fim = jsonLimpo.lastIndexOf(']');
@@ -421,11 +365,8 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
             }
 
             transacoesExtraidas = JSON.parse(jsonLimpo);
-            console.log(`✅ [EXTRATO] IA categorizou ${transacoesExtraidas.length} transações!`);
         } catch (errIA) {
-            console.warn("⚠️ [EXTRATO] IA indisponível ou falhou. Iniciando varredura RegEx completa...");
-
-            // TENTATIVA 2: PLANO B REGEX MULTI-LINHA
+            console.warn("⚠️ [EXTRATO] IA indisponível. Iniciando varredura RegEx...");
             const linhas = conteudoArquivo.split(/\r?\n/);
             const mapUnicas = new Map();
 
@@ -443,10 +384,10 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                         let cat = 'Compras';
                         const dL = descLimpa.toLowerCase();
 
-                        if (dL.includes('mercado') || dL.includes('super') || dL.includes('padaria') || dL.includes('atacad')) cat = 'Mercado';
-                        else if (dL.includes('uber') || dL.includes('99') || dL.includes('posto') || dL.includes('gasolina')) cat = 'Transporte';
-                        else if (dL.includes('ifood') || dL.includes('lanche') || dL.includes('restaurante') || dL.includes('acai') || dL.includes('açaí')) cat = 'Lazer';
-                        else if (dL.includes('luz') || dL.includes('agua') || dL.includes('internet') || dL.includes('aluguel') || dL.includes('enel')) cat = 'Casa';
+                        if (dL.includes('mercado') || dL.includes('super') || dL.includes('padaria')) cat = 'Mercado';
+                        else if (dL.includes('uber') || dL.includes('99') || dL.includes('posto') || dL.includes('pneu') || dL.includes('moto')) cat = 'Transporte';
+                        else if (dL.includes('ifood') || dL.includes('jantar') || dL.includes('lanche')) cat = 'Lazer';
+                        else if (dL.includes('luz') || dL.includes('agua') || dL.includes('internet')) cat = 'Casa';
 
                         const chave = `${descLimpa}_${valNum}`;
                         if (!mapUnicas.has(chave)) {
@@ -456,11 +397,10 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
                 }
             }
             transacoesExtraidas = Array.from(mapUnicas.values());
-            console.log(`📊 [EXTRATO] RegEx extraiu ${transacoesExtraidas.length} movimentações no total.`);
         }
 
         if (!Array.isArray(transacoesExtraidas) || transacoesExtraidas.length === 0) {
-            return res.status(400).json({ erro: "Nenhuma transação válida identificada no extrato." });
+            return res.status(400).json({ erro: "Nenhuma transação válida identificada." });
         }
 
         let qtdSaidas = 0;
@@ -474,38 +414,28 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
 
             if (val > 0) {
                 if (tipo === 'entrada' || cat === 'Entrada') {
-                    await pool.query(
-                        `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [usuarioId, desc, val, dataHoje]
-                    );
+                    await pool.query(`INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`, [usuarioId, desc, val, dataHoje]);
                     qtdEntradas++;
                 } else {
-                    await pool.query(
-                        `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [usuarioId, desc, val, cat, dataHoje]
-                    );
+                    await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`, [usuarioId, desc, val, cat, dataHoje]);
                     qtdSaidas++;
                 }
             }
         }
 
-        console.log(`💾 [EXTRATO] Finalizado: ${qtdSaidas} saídas e ${qtdEntradas} entradas.`);
         res.json({ mensagem: `✅ Extrato importado com sucesso: ${qtdSaidas} saídas e ${qtdEntradas} entradas!` });
     } catch (err) {
-        console.error("❌ ERRO CRÍTICO NO EXTRATO:", err);
         res.status(500).json({ erro: "Erro interno no servidor: " + err.message });
     }
 });
-// Rota para zerar as transações/extrato do usuário de testes
+
 app.delete('/api/limpar-extrato', autenticarToken, async (req, res) => {
     try {
-        const usuarioId = req.usuario.id;
-        await pool.query('DELETE FROM transacoes WHERE usuario_id = $1', [usuarioId]);
+        await pool.query('DELETE FROM transacoes WHERE usuario_id = $1', [req.usuario.id]);
         res.json({ mensagem: "✅ Extrato limpo com sucesso!" });
-    } catch (err) {
-        res.status(500).json({ erro: "Erro ao limpar extrato." });
-    }
+    } catch (err) { res.status(500).json({ erro: "Erro ao limpar extrato." }); }
 });
+
 // Rotas de Gastos Fixos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
@@ -711,12 +641,36 @@ async function iniciarBotUsuario(usuarioId) {
                         text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 } else {
-                    const descNorm = resultado.descricao.toLowerCase();
+                    const descNorm = resultado.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     let cat = 'Compras';
-                    if (descNorm.includes('mercado') || descNorm.includes('padaria') || descNorm.includes('feira')) cat = 'Mercado';
-                    else if (descNorm.includes('gasolina') || descNorm.includes('uber') || descNorm.includes('combustivel')) cat = 'Transporte';
-                    else if (descNorm.includes('ifood') || descNorm.includes('lanche') || descNorm.includes('restaurante') || descNorm.includes('pizza')) cat = 'Lazer';
-                    else if (descNorm.includes('aluguel') || descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet')) cat = 'Casa';
+
+                    if (
+                        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') || 
+                        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') || 
+                        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') || 
+                        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') || 
+                        descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
+                    ) {
+                        cat = 'Transporte';
+                    } else if (
+                        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') || 
+                        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') || 
+                        descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar')
+                    ) {
+                        cat = 'Lazer';
+                    } else if (
+                        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') || 
+                        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('feira') || 
+                        descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
+                    ) {
+                        cat = 'Mercado';
+                    } else if (
+                        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || 
+                        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') || 
+                        descNorm.includes('condominio') || descNorm.includes('acessorios')
+                    ) {
+                        cat = 'Casa';
+                    }
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
