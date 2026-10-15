@@ -13,6 +13,8 @@ let valoresReaisOcultos = {};
 let totalAportesAcumulado = 0;
 let periodoAtivoPatrimonio = 'meses';
 
+const ICONE_LIXEIRA_SVG = `<svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+
 window.addEventListener('DOMContentLoaded', () => {
     if (!token && !window.location.pathname.includes('login.html')) {
         window.location.href = 'login.html';
@@ -54,9 +56,20 @@ function alternarFormulario(idForm) {
 function alternarModoPrivacidade() {
     modoPrivado = !modoPrivado;
     const alvos = document.querySelectorAll('.privacy-target');
-    const btnPrivado = document.querySelector('.btn-privacy');
+    const txtPrivado = document.getElementById('textPrivacidade');
+    const iconPrivado = document.getElementById('iconPrivacidade');
 
-    if (btnPrivado) btnPrivado.innerText = modoPrivado ? '👁️ Exibir' : '👁️ Privado';
+    if (txtPrivado) {
+        txtPrivado.innerText = modoPrivado ? 'Exibir' : 'Privado';
+    }
+
+    if (iconPrivado) {
+        if (modoPrivado) {
+            iconPrivado.innerHTML = `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`;
+        } else {
+            iconPrivado.innerHTML = `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+        }
+    }
 
     alvos.forEach((el, index) => {
         const idChave = el.id || `alvo_${index}`;
@@ -172,7 +185,7 @@ async function carregarAtivosPortfolio() {
                         <strong>${item.ticker} (${item.tipo})</strong>
                         <small>Qtd: ${item.quantidade} • Preço: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Data: ${dataFormatada} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
-                    <button onclick="removerAtivo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir ativo">🗑️</button>
+                    <button onclick="removerAtivo(${item.id})" style="background:none; border:none; cursor:pointer;" title="Excluir ativo">${ICONE_LIXEIRA_SVG}</button>
                 `;
                 container.appendChild(div);
             }
@@ -215,7 +228,11 @@ async function adicionarAtivoPortfolio() {
         return;
     }
 
+    const valorTotalAporte = quantidade * preco_medio;
+    const mesAtualNome = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
     try {
+        // 1. Cadastra o ativo no Portfólio
         const res = await fetch(`${API_URL}/ativos`, {
             method: 'POST',
             headers: {
@@ -226,11 +243,27 @@ async function adicionarAtivoPortfolio() {
         });
 
         if (res.ok) {
+            // 2. Registra automaticamente o valor investido como APORTE no balanço do mês
+            await fetch(`${API_URL}/aportes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ 
+                    mes: `${ticker} (${mesAtualNome})`, 
+                    valor: valorTotalAporte 
+                })
+            });
+
             tickerInput.value = '';
             qtdInput.value = '';
             precoInput.value = '';
             alternarFormulario('formAlocacao');
+            
+            // Recarrega os dados do dashboard
             carregarAtivosPortfolio();
+            carregarAportesBD();
         } else {
             const errData = await res.json();
             alert(errData.erro || "Erro ao salvar ativo.");
@@ -239,7 +272,6 @@ async function adicionarAtivoPortfolio() {
         alert("Erro ao conectar com o servidor.");
     }
 }
-
 async function removerAtivo(id) {
     try {
         await fetch(`${API_URL}/ativos/${id}`, {
@@ -349,7 +381,7 @@ async function carregarEntradasBD() {
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">+ R$ ${v.toFixed(2).replace('.', ',')}</span>
-                    <button onclick="removerEntrada(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir entrada">🗑️</button>
+                    <button onclick="removerEntrada(${item.id})" style="background:none; border:none; cursor:pointer;" title="Excluir entrada">${ICONE_LIXEIRA_SVG}</button>
                 </div>
             `;
             container.appendChild(div);
@@ -432,7 +464,7 @@ async function carregarDadosDoBD() {
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <span class="trans-amount expense privacy-target">- R$ ${v.toFixed(2).replace('.', ',')}</span>
-                    <button onclick="removerTransacaoExtrato(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir do extrato">🗑️</button>
+                    <button onclick="removerTransacaoExtrato(${item.id})" style="background:none; border:none; cursor:pointer;" title="Excluir do extrato">${ICONE_LIXEIRA_SVG}</button>
                 </div>
             `;
             listContainer.appendChild(div);
@@ -508,7 +540,7 @@ async function carregarGastosFixosBD() {
             const v = parseFloat(item.valor) || 0;
             totalFixed += v;
 
-            let statusBadge = '<span class="status-badge" style="color: var(--verde-destaque); border-color: var(--borda-vidro);">🟢 Em Dia</span>';
+            let statusBadge = '<span class="status-badge" style="color: var(--verde-destaque); border-color: var(--borda-vidro);">Em Dia</span>';
             
             if (item.vencimento && item.vencimento.includes('/')) {
                 const partes = item.vencimento.split('/');
@@ -522,9 +554,9 @@ async function carregarGastosFixosBD() {
                 const diffDias = Math.ceil((dataVenc - hoje) / (1000 * 60 * 60 * 24));
 
                 if (diffDias < 0) {
-                    statusBadge = '<span class="status-badge" style="color: #ff6b6b; border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.1);">🔴 Vencido</span>';
+                    statusBadge = '<span class="status-badge" style="color: #ff6b6b; border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.1);">Vencido</span>';
                 } else if (diffDias <= 3) {
-                    statusBadge = '<span class="status-badge" style="color: #f1c40f; border-color: rgba(241,196,15,0.3); background: rgba(241,196,15,0.1);">🟡 A Vencer</span>';
+                    statusBadge = '<span class="status-badge" style="color: #f1c40f; border-color: rgba(241,196,15,0.3); background: rgba(241,196,15,0.1);">A Vencer</span>';
                 }
             }
 
@@ -541,7 +573,7 @@ async function carregarGastosFixosBD() {
                 <div class="fixed-item-actions">
                     <span class="fixed-amount privacy-target">R$ ${v.toFixed(2).replace('.', ',')}</span>
                     <button onclick="marcarGastoComoPago(${item.id})" style="background: rgba(0, 255, 136, 0.15); border: 1px solid var(--verde-destaque); color: var(--verde-destaque); padding: 5px 10px; border-radius: 8px; font-weight: 700; cursor: pointer;" title="Dar baixa como pago">✅ Pago</button>
-                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir conta">🗑️</button>
+                    <button onclick="removerGastoFixo(${item.id})" style="background:none; border:none; cursor:pointer;" title="Excluir conta">${ICONE_LIXEIRA_SVG}</button>
                 </div>
             `;
             listContainer.appendChild(div);
@@ -801,7 +833,7 @@ async function carregarAportesBD() {
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">R$ ${v.toFixed(2).replace('.', ',')}</span>
-                        <button onclick="removerAporte(${item.id})" style="background:none; border:none; color:#ff6b6b; cursor:pointer;" title="Excluir aporte">🗑️</button>
+                        <button onclick="removerAporte(${item.id})" style="background:none; border:none; cursor:pointer;" title="Excluir aporte">${ICONE_LIXEIRA_SVG}</button>
                     </div>
                 `;
                 containerAportes.appendChild(div);
@@ -856,67 +888,118 @@ async function adicionarAporteMes() {
     } catch (err) { }
 }
 
+// BALANÇO, PREVISÃO MACRO & SUGESTÃO DE COMPRA DA IA
 function atualizarGraficoBalanco() {
     if (!chartBalanco) return;
-    const totalEntradas = Array.from(document.querySelectorAll('#listaEntradasCadastradas .transaction-item span'))
-        .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('+ R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
 
-    const totalFixos = Array.from(document.querySelectorAll('#fixedExpensesList .fixed-amount'))
-        .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
+    // Helper para extrair número puro de elementos HTML de texto de moeda
+    const extrairValorTexto = (seletor) => {
+        return Array.from(document.querySelectorAll(seletor)).reduce((acc, el) => {
+            let txt = el.innerText || '';
+            // Limpa tudo que não for número, vírgula ou ponto
+            txt = txt.replace(/[-+R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+            const val = parseFloat(txt) || 0;
+            return acc + val;
+        }, 0);
+    };
 
-    const totalVariaveis = Array.from(document.querySelectorAll('#transactionList .trans-amount'))
-        .reduce((acc, el) => acc + (parseFloat(el.innerText.replace('- R$', '').replace(/\./g, '').replace(',', '.')) || 0), 0);
+    const totalEntradas = extrairValorTexto('#listaEntradasCadastradas .transaction-item span');
+    const totalFixos = extrairValorTexto('#fixedExpensesList .fixed-amount');
+    const totalVariaveis = extrairValorTexto('#transactionList .trans-amount');
 
     const totalGastosConsumo = totalFixos + totalVariaveis;
     const totalSaidasGeral = totalGastosConsumo + totalAportesAcumulado;
     const saldoLivreReal = totalEntradas - totalSaidasGeral;
 
+    // Atualiza o gráfico de barras (Entradas vs Saídas)
     chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
 
-    // Alimentar as 4 caixinhas de resumo no rodapé do card
+    // Atualiza os Cards do Rodapé do Balanço
     if (document.getElementById('cardResumoEntradas')) document.getElementById('cardResumoEntradas').innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoSaidas')) document.getElementById('cardResumoSaidas').innerText = `R$ ${totalGastosConsumo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoAportes')) document.getElementById('cardResumoAportes').innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoLiquido')) document.getElementById('cardResumoLiquido').innerText = `R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-    const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : 0;
+    // Cálculo das porcentagens do Orçamento
+    const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : (totalSaidasGeral > 0 ? 100 : 0);
+    const pctGastos = totalEntradas > 0 ? (totalGastosConsumo / totalEntradas) * 100 : 0;
+    const pctAportes = totalEntradas > 0 ? (totalAportesAcumulado / totalEntradas) * 100 : 0;
+    const pctLivre = totalEntradas > 0 ? (saldoLivreReal / totalEntradas) * 100 : 0;
+
     const barraGasto = document.getElementById('barraGastoProporcao');
     const textoGasto = document.getElementById('textoPorcentagemGastos');
     const badgeStatus = document.getElementById('badgeStatusGasto');
     const alertaGastoTexto = document.getElementById('alertaGastoTexto');
-    const aiRecommendationText = document.getElementById('aiRecommendationText');
+    
+    const aiPrevisaoText = document.getElementById('aiRecommendationText');
+    const aiSugestaoBalancoText = document.getElementById('aiRecommendationTextBalanco');
 
-    if (barraGasto && textoGasto && badgeStatus) {
+    if (barraGasto && textoGasto) {
         const larguraVisual = Math.min(Math.round(pctComprometido), 100);
         barraGasto.style.width = `${larguraVisual}%`;
         
-        textoGasto.innerHTML = `${pctComprometido.toFixed(1).replace('.', ',')}% comprometido | <span style="color: var(--verde-destaque);">Livre: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>`;
+        textoGasto.innerText = `${pctComprometido.toFixed(1).replace('.', ',')}% de gastos`;
 
-        if (pctComprometido <= 70) {
-            barraGasto.style.backgroundColor = '#00ff88';
-            badgeStatus.innerText = '🟢 Saudável';
-            badgeStatus.style.color = '#00ff88';
-            if (alertaGastoTexto) alertaGastoTexto.innerText = `💡 Excelente! Você ainda tem R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} livres na conta após gastar e investir.`;
-            
-            if (aiRecommendationText && saldoLivreReal > 0) {
-                const recReserva = (saldoLivreReal * 0.3).toFixed(2);
-                const recAtivos = (saldoLivreReal * 0.5).toFixed(2);
-                const recCaixa = (saldoLivreReal * 0.2).toFixed(2);
-                aiRecommendationText.innerText = `💡 Sugestão IA: Você possui R$ ${saldoLivreReal.toFixed(2)} livres. Recomendamos destinar R$ ${recReserva} para Reserva, R$ ${recAtivos} para novos Ativos na B3 e manter R$ ${recCaixa} no Caixa Livre para emergências.`;
-            }
-        } else if (pctComprometido <= 90) {
-            barraGasto.style.backgroundColor = '#f1c40f';
-            badgeStatus.innerText = '🟡 Atenção';
-            badgeStatus.style.color = '#f1c40f';
-            if (alertaGastoTexto) alertaGastoTexto.innerText = `⚠️ Boa gestão de aportes, mas o saldo livre baixou para R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
-            if (aiRecommendationText) aiRecommendationText.innerText = `⚠️ Atenção aos gastos variáveis: seu caixa livre está reduzido. Priorize manter o saldo para compromissos essenciais.`;
-        } else {
+        if (saldoLivreReal < 0) {
+            // CENÁRIO DEFICITÁRIO (SAÍDAS > ENTRADAS)
             barraGasto.style.backgroundColor = '#ff6b6b';
-            badgeStatus.innerText = '🔴 Extremo';
-            badgeStatus.style.color = '#ff6b6b';
-            if (alertaGastoTexto) alertaGastoTexto.innerText = `🚨 ALERTA: O compromisso total atingiu ${pctComprometido.toFixed(1)}%. Saldo livre atual: R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
-            if (aiRecommendationText) aiRecommendationText.innerText = `🚨 Alerta Vermelho: Seus gastos e aportes ultrapassaram a receita. Evite novas compras até equilibrar as entradas.`;
+            if (badgeStatus) {
+                badgeStatus.innerText = 'Déficit';
+                badgeStatus.style.color = '#ff6b6b';
+            }
+            
+            if (alertaGastoTexto) {
+                alertaGastoTexto.innerText = `Atenção: Suas saídas (R$ ${totalSaidasGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) ultrapassaram suas entradas em R$ ${Math.abs(saldoLivreReal).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`;
+            }
+
+            if (aiPrevisaoText) {
+                aiPrevisaoText.innerText = `🚨 Alerta de Fluxo de Caixa: Mês encerrado no negativo em R$ ${Math.abs(saldoLivreReal).toFixed(2).replace('.', ',')}. Evite o uso de cheque especial ou cartão rotativo.`;
+            }
+
+            if (aiSugestaoBalancoText) {
+                aiSugestaoBalancoText.innerText = `🚨 Sugestão da IA: Como o saldo livre está negativo em -R$ ${Math.abs(saldoLivreReal).toFixed(2).replace('.', ',')}, suspenda imediatamente novos aportes no portfólio. Priorize cobrir esse saldo devedor utilizando sua Caixinha de Emergência de curtíssimo prazo e revise cortes em gastos com Lazer e Compras no próximo mês.`;
+            }
+
+        } else if (pctComprometido <= 70) {
+            // CENÁRIO SAUDÁVEL (<= 70% COMPROMETIDO)
+            barraGasto.style.backgroundColor = '#00ff88';
+            if (badgeStatus) {
+                badgeStatus.innerText = 'Saudável';
+                badgeStatus.style.color = '#00ff88';
+            }
+            
+            if (alertaGastoTexto) {
+                alertaGastoTexto.innerText = `Excelente saúde financeira! Seus gastos consomem ${pctGastos.toFixed(0)}%, você aportou ${pctAportes.toFixed(0)}% e possui ${pctLivre.toFixed(0)}% (R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) livres na conta.`;
+            }
+
+            if (aiPrevisaoText) {
+                aiPrevisaoText.innerText = `📈 Análise Orçamentária: Estrutura financeira saudável. Com ${pctAportes.toFixed(0)}% em aportes e saldo positivo, o cenário favorece o crescimento patrimonial.`;
+            }
+
+            if (aiSugestaoBalancoText) {
+                aiSugestaoBalancoText.innerText = `💡 Sugestão da IA: Você possui R$ ${saldoLivreReal.toFixed(2).replace('.', ',')} (${pctLivre.toFixed(0)}%) livres. Recomendamos destinar uma parcela deste excedente para a sua Caixinha de Emergência/Oportunidade em liquidez diária (CDB 100% CDI) para manter reserva imediata.`;
+            }
+
+        } else {
+            // CENÁRIO ATENÇÃO (70% A 100% COMPROMETIDO)
+            barraGasto.style.backgroundColor = '#f1c40f';
+            if (badgeStatus) {
+                badgeStatus.innerText = 'Atenção';
+                badgeStatus.style.color = '#f1c40f';
+            }
+            
+            if (alertaGastoTexto) {
+                alertaGastoTexto.innerText = `Atenção: Gastos e compromissos consumiram ${pctComprometido.toFixed(1)}% do orçamento. Restam R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} livres.`;
+            }
+
+            if (aiPrevisaoText) {
+                aiPrevisaoText.innerText = `⚠️ Alerta de Margem Reduzida: Mais de 70% da renda comprometida. Fique atento a despesas imprevistas.`;
+            }
+
+            if (aiSugestaoBalancoText) {
+                aiSugestaoBalancoText.innerText = `⚠️ Sugestão da IA: Seu saldo livre está em apenas R$ ${saldoLivreReal.toFixed(2).replace('.', ',')}. Reduza novos aportes travados e reserve este valor para cobrir despesas do início do próximo mês.`;
+            }
         }
     }
 }
@@ -1110,20 +1193,10 @@ async function importarArquivoOFX(input) {
                 const pagina = await pdfDoc.getPage(i);
                 const conteudoPagina = await pagina.getTextContent();
                 
-                let ultimaY = null;
-                let linhaAtual = '';
-
                 conteudoPagina.items.forEach(item => {
-                    const y = Math.round(item.transform[5]);
-                    if (ultimaY === null || Math.abs(y - ultimaY) > 5) {
-                        if (linhaAtual) textoCompleto += linhaAtual + '\n';
-                        linhaAtual = item.str;
-                        ultimaY = y;
-                    } else {
-                        linhaAtual += ' ' + item.str;
-                    }
+                    textoCompleto += item.str + ' ';
                 });
-                if (linhaAtual) textoCompleto += linhaAtual + '\n';
+                textoCompleto += '\n';
             }
 
             if (!textoCompleto.trim()) {
@@ -1144,6 +1217,7 @@ async function importarArquivoOFX(input) {
     }
 
     try {
+        console.log("🚀 Enviando arquivo para:", `${API_URL}/importar-ofx`);
         const resposta = await fetch(`${API_URL}/importar-ofx`, {
             method: 'POST',
             headers: {
@@ -1153,6 +1227,8 @@ async function importarArquivoOFX(input) {
         });
 
         const resultado = await resposta.json();
+        console.log("📥 Resposta do servidor:", resultado);
+
         if (resposta.ok) {
             alert(resultado.mensagem);
             window.location.reload();

@@ -1,8 +1,14 @@
 self.addEventListener('install', (e) => {
-    console.log('[Service Worker] Instalado com sucesso.');
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', (e) => {
+    e.waitUntil(clients.claim());
 });
 
 self.addEventListener('fetch', (e) => {
-    // Permite que o app busque os dados normalmente da API e Render
-    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    // Deixa todas as requisições (API e CoinGecko) passarem direto pela rede sem manipulação de cache
+    e.respondWith(fetch(e.request).catch(() => {
+        return caches.match(e.request);
+    }));
 });

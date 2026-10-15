@@ -48,6 +48,12 @@ pool.connect((err) => {
     }
 });
 
+// Keep-Alive para evitar que o Render entre em modo de espera (sleep)
+setInterval(() => {
+    const urlPing = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+    fetch(`${urlPing}/api/entradas`).catch(() => { });
+}, 10 * 60 * 1000);
+
 async function inicializarTabelas() {
     try {
         await pool.query(`
@@ -105,10 +111,11 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Modelos atualizados do Gemini API
+// Modelos oficiais suportados pelo SDK
 const MODELOS_DISPONIVEIS = [
+    'gemini-3.8-flash',
     'gemini-2.5-flash',
-    'gemini-2.0-flash'
+    'gemini-2.0-flash',   
 ];
 
 async function chamarComRetry(prompt) {
@@ -128,7 +135,7 @@ async function chamarComRetry(prompt) {
                 if (err.message.includes('503') || err.message.includes('UNAVAILABLE') || err.message.includes('429')) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } else {
-                    break; 
+                    break;
                 }
             }
         }
@@ -287,72 +294,147 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Nova rota adicionada para importar extratos (PDF convertidos, TXT ou OFX)
-// Rota robusta para importar extratos (PDF convertidos, TXT ou OFX)
+// Rota de Importação de Extratos com IA
+// Rota de Importação de Extratos - Versão com Modelos Corrigidos e Fallback Completo
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
+    console.log("📥 [EXTRATO] Processando arquivo enviado...");
     try {
         if (!req.file) {
             return res.status(400).json({ erro: "Nenhum arquivo enviado." });
         }
 
-        const conteudoArquivo = req.file.buffer.toString('utf8');
+        // Obtém o texto do PDF e limpa resíduos
+        let conteudoArquivo = req.file.buffer.toString('utf8')
+            .replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F]/g, "")
+            .slice(0, 15000);
+
         const usuarioId = req.usuario.id;
         const dataHoje = new Date().toLocaleDateString('pt-BR');
 
-        const prompt = `
-        Analise o texto do extrato bancário abaixo e extraia todas as transações de gastos/despesas encontrados.
-        Texto do extrato:
-        """
-        ${conteudoArquivo}
-        """
-
-        Responda EXATAMENTE e APENAS um JSON contendo um array de objetos com o formato abaixo (sem marcadores markdown, sem texto extra):
-        [
-          {"descricao": "Supermercado Extra", "valor": 150.50, "categoria": "Mercado"},
-          {"descricao": "Posto Ipiranga", "valor": 100.00, "categoria": "Transporte"}
-        ]
-        Categorias permitidas estritamente: Mercado, Casa, Lazer, Transporte, Compras. Se não tiver certeza, use Compras.
-        `;
-
-        const respostaIA = await chamarComRetry(prompt);
-        let textoResposta = respostaIA.text || '';
-        let jsonLimpo = textoResposta.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-        
-        const inicio = jsonLimpo.indexOf('[');
-        const fim = jsonLimpo.lastIndexOf(']');
-        if (inicio !== -1 && fim !== -1) {
-            jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
-        }
-
         let transacoesExtraidas = [];
+
+        // TENTATIVA 1: IA GEMINI
         try {
+            const prompt = `
+            Você é um assistente financeiro especialista. Analise o extrato bancário em texto abaixo e extraia TODAS as transações reais de entrada e saída.
+
+            REGRAS DE CATEGORIZAÇÃO:
+            - "Mercado": Supermercados, padarias, açougues, hortifruti, atacadões.
+            - "Transporte": Uber, 99, postos de gasolina, pedágio.
+            - "Casa": Luz, água, internet, gás, aluguel, condomínio.
+            - "Lazer": iFood, restaurantes, lanchonetes, açaí, cinema, assinaturas.
+            - "Compras": Compras gerais, farmácia, vestuário, PIX enviados.
+            - "Entrada": Salários, PIX recebidos, rendimentos, vendas.
+
+            FORMATO DE SAÍDA EXIGIDO:
+            Retorne APENAS um array JSON puro (sem markdown, sem \`\`\`json):
+            [
+              {"descricao": "Supermercado Extra", "valor": 150.00, "tipo": "saida", "categoria": "Mercado"},
+              {"descricao": "Uber", "valor": 25.00, "tipo": "saida", "categoria": "Transporte"},
+              {"descricao": "Pix Recebido", "valor": 1200.00, "tipo": "entrada", "categoria": "Entrada"}
+            ]
+
+            Texto do Extrato:
+            """
+            ${conteudoArquivo}
+            """
+            `;
+
+            const respostaIA = await chamarComRetry(prompt);
+            let textoResposta = respostaIA.text || '';
+            console.log("🤖 [EXTRATO] Resposta da IA recebida!");
+
+            let jsonLimpo = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
+            const inicio = jsonLimpo.indexOf('[');
+            const fim = jsonLimpo.lastIndexOf(']');
+            if (inicio !== -1 && fim !== -1) {
+                jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
+            }
+            
             transacoesExtraidas = JSON.parse(jsonLimpo);
-        } catch (e) {
-            console.error("Erro ao converter JSON da IA:", jsonLimpo);
-            return res.status(400).json({ erro: "A IA não conseguiu estruturar as transações deste arquivo corretamente." });
+            console.log(`✅ [EXTRATO] IA categorizou ${transacoesExtraidas.length} transações!`);
+        } catch (errIA) {
+            console.warn("⚠️ [EXTRATO] IA indisponível ou falhou. Iniciando varredura RegEx completa...");
+            
+            // TENTATIVA 2: PLANO B REGEX MULTI-LINHA
+            const linhas = conteudoArquivo.split(/\r?\n/);
+            const mapUnicas = new Map();
+
+            for (let linha of linhas) {
+                const matchVal = linha.match(/(-?\d+[\.,]\d{2})/);
+                if (matchVal) {
+                    const valNum = Math.abs(parseFloat(matchVal[1].replace('.', '').replace(',', '.')));
+                    let descLimpa = linha.replace(matchVal[0], '')
+                                         .replace(/R\$/g, '')
+                                         .replace(/\d{2}\/\d{2}\/\d{4}/g, '')
+                                         .replace(/\b\d{6,}\b/g, '')
+                                         .trim();
+
+                    if (valNum > 0 && valNum < 50000 && descLimpa.length >= 2 && !descLimpa.toLowerCase().includes('saldo')) {
+                        let cat = 'Compras';
+                        const dL = descLimpa.toLowerCase();
+                        
+                        if (dL.includes('mercado') || dL.includes('super') || dL.includes('padaria') || dL.includes('atacad')) cat = 'Mercado';
+                        else if (dL.includes('uber') || dL.includes('99') || dL.includes('posto') || dL.includes('gasolina')) cat = 'Transporte';
+                        else if (dL.includes('ifood') || dL.includes('lanche') || dL.includes('restaurante') || dL.includes('acai') || dL.includes('açaí')) cat = 'Lazer';
+                        else if (dL.includes('luz') || dL.includes('agua') || dL.includes('internet') || dL.includes('aluguel') || dL.includes('enel')) cat = 'Casa';
+
+                        const chave = `${descLimpa}_${valNum}`;
+                        if (!mapUnicas.has(chave)) {
+                            mapUnicas.set(chave, { descricao: descLimpa.slice(0, 50), valor: valNum, tipo: 'saida', categoria: cat });
+                        }
+                    }
+                }
+            }
+            transacoesExtraidas = Array.from(mapUnicas.values());
+            console.log(`📊 [EXTRATO] RegEx extraiu ${transacoesExtraidas.length} movimentações no total.`);
         }
 
         if (!Array.isArray(transacoesExtraidas) || transacoesExtraidas.length === 0) {
-            return res.status(400).json({ erro: "Não foi possível identificar transações válidas neste arquivo." });
+            return res.status(400).json({ erro: "Nenhuma transação válida identificada no extrato." });
         }
 
+        let qtdSaidas = 0;
+        let qtdEntradas = 0;
+
         for (let t of transacoesExtraidas) {
-            const desc = t.descricao || 'Despesa Importada';
-            const val = parseFloat(t.valor) || 0;
-            const cat = t.categoria || 'Compras';
+            const desc = t.descricao ? t.descricao.trim() : 'Movimentação';
+            const val = Math.abs(parseFloat(t.valor) || 0);
+            const tipo = (t.tipo || 'saida').toLowerCase();
+            const cat = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'].includes(t.categoria) ? t.categoria : 'Compras';
 
             if (val > 0) {
-                await pool.query(
-                    `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                    [usuarioId, desc, val, cat, dataHoje]
-                );
+                if (tipo === 'entrada' || cat === 'Entrada') {
+                    await pool.query(
+                        `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
+                        [usuarioId, desc, val, dataHoje]
+                    );
+                    qtdEntradas++;
+                } else {
+                    await pool.query(
+                        `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
+                        [usuarioId, desc, val, cat, dataHoje]
+                    );
+                    qtdSaidas++;
+                }
             }
         }
 
-        res.json({ mensagem: `✅ ${transacoesExtraidas.length} transações importadas e categorizadas com sucesso!` });
+        console.log(`💾 [EXTRATO] Finalizado: ${qtdSaidas} saídas e ${qtdEntradas} entradas.`);
+        res.json({ mensagem: `✅ Extrato importado com sucesso: ${qtdSaidas} saídas e ${qtdEntradas} entradas!` });
     } catch (err) {
-        console.error("Erro crítico na importação:", err);
-        res.status(500).json({ erro: "Erro interno ao processar arquivo de extrato no servidor." });
+        console.error("❌ ERRO CRÍTICO NO EXTRATO:", err);
+        res.status(500).json({ erro: "Erro interno no servidor: " + err.message });
+    }
+});
+// Rota para zerar as transações/extrato do usuário de testes
+app.delete('/api/limpar-extrato', autenticarToken, async (req, res) => {
+    try {
+        const usuarioId = req.usuario.id;
+        await pool.query('DELETE FROM transacoes WHERE usuario_id = $1', [usuarioId]);
+        res.json({ mensagem: "✅ Extrato limpo com sucesso!" });
+    } catch (err) {
+        res.status(500).json({ erro: "Erro ao limpar extrato." });
     }
 });
 // Rotas de Gastos Fixos
@@ -447,7 +529,8 @@ async function iniciarBotUsuario(usuarioId) {
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        markOnlineOnConnect: true
+        markOnlineOnConnect: true,
+        keepAliveIntervalMs: 30000
     });
 
     sessoesWhatsApp[usuarioId] = { sock, status: 'iniciando', qr: '' };
@@ -464,16 +547,18 @@ async function iniciarBotUsuario(usuarioId) {
         }
 
         if (connection === 'close') {
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
             sessoesWhatsApp[usuarioId].status = 'desconectado';
             sessoesWhatsApp[usuarioId].qr = '';
-            const shouldReconnect = (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut);
-            if (shouldReconnect) {
-                setTimeout(() => iniciarBotUsuario(usuarioId), 3000);
+
+            if (statusCode !== DisconnectReason.loggedOut) {
+                console.log(`🔄 Reconectando WhatsApp do Usuário ID ${usuarioId}...`);
+                setTimeout(() => iniciarBotUsuario(usuarioId), 5000);
             }
         } else if (connection === 'open') {
             sessoesWhatsApp[usuarioId].status = 'conectado';
             sessoesWhatsApp[usuarioId].qr = '';
-            console.log(`🚀 WhatsApp conectado com sucesso para o Usuário ID ${usuarioId}!`);
+            console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
         }
     });
 
@@ -484,9 +569,9 @@ async function iniciarBotUsuario(usuarioId) {
 
             const remetenteRaw = msg.key.remoteJid;
             const textoMensagem = (
-                msg.message.conversation || 
-                msg.message.extendedTextMessage?.text || 
-                msg.message.imageMessage?.caption || 
+                msg.message.conversation ||
+                msg.message.extendedTextMessage?.text ||
+                msg.message.imageMessage?.caption ||
                 ''
             ).trim();
 
@@ -494,7 +579,7 @@ async function iniciarBotUsuario(usuarioId) {
 
             const textoMinusculo = textoMensagem.toLowerCase();
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
-            
+
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
             if (!temGatilho) return;
 
@@ -507,19 +592,12 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             });
 
-            console.log(`💬 Comando financeiro recebido do Usuário ID ${usuarioId}: "${textoLimpo}" (Tipo detectado: ${eGatilhoEntrada ? 'Entrada' : 'Gasto'})`);
-
             const promptIA = `
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
             Mensagem: "${textoLimpo}"
 
             Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
-            {"eGasto": true, "descricao": "Venda de dindin", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
-
-            Regras:
-            - Se o tipo indicado for "entrada" ou se a mensagem for de vendas/recebimentos/PIX/salário, use "tipo": "entrada".
-            - Se for compra, pagamento ou despesa, use "tipo": "saida".
-            - Se não for registro financeiro, responda: {"eGasto": false}
+            {"eGasto": true, "descricao": "Venda", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
             `;
 
             let resultado = { eGasto: false };
@@ -537,11 +615,11 @@ async function iniciarBotUsuario(usuarioId) {
                 if (numerosEncontrados) {
                     const valExt = parseFloat(numerosEncontrados[0].replace(',', '.'));
                     let descExt = textoLimpo.replace(numerosEncontrados[0], '').replace(/reais|de|por|em/gi, '').trim();
-                    resultado = { 
-                        eGasto: true, 
-                        descricao: descExt || (eGatilhoEntrada ? 'Entrada WhatsApp' : 'Gasto WhatsApp'), 
-                        valor: valExt, 
-                        tipo: eGatilhoEntrada ? 'entrada' : 'saida' 
+                    resultado = {
+                        eGasto: true,
+                        descricao: descExt || (eGatilhoEntrada ? 'Entrada WhatsApp' : 'Gasto WhatsApp'),
+                        valor: valExt,
+                        tipo: eGatilhoEntrada ? 'entrada' : 'saida'
                     };
                 }
             }
@@ -559,9 +637,9 @@ async function iniciarBotUsuario(usuarioId) {
                         `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
                         [usuarioId, resultado.descricao, valorNum, dataHoje]
                     );
-                    
-                    await sock.sendMessage(remetenteRaw, { 
-                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}` 
+
+                    await sock.sendMessage(remetenteRaw, {
+                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 } else {
                     const descNorm = resultado.descricao.toLowerCase();
@@ -576,8 +654,8 @@ async function iniciarBotUsuario(usuarioId) {
                         [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
                     );
 
-                    await sock.sendMessage(remetenteRaw, { 
-                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}` 
+                    await sock.sendMessage(remetenteRaw, {
+                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 }
             }
@@ -587,7 +665,6 @@ async function iniciarBotUsuario(usuarioId) {
     });
 }
 
-// Rota para o usuário obter o QR Code do SEU perfil
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     const usuarioId = req.usuario.id;
 
