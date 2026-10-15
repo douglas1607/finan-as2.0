@@ -272,7 +272,7 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     // 1. TRANSPORTE (Uber, 99, Moto, Parcela, Mecânica, Gasolina)
     if (
         descNorm.includes('uber') ||
-        descNorm.includes('99') ||
+        descNorm.includes('99 TECNOLOGIA') ||
         descNorm.includes('posto') ||
         descNorm.includes('gasolina') ||
         descNorm.includes('combustivel') ||
