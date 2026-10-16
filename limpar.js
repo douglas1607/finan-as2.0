@@ -24,4 +24,26 @@ async function limparBanco() {
     }
 }
 
-limparBanco();
+async function limparAportes() {
+    try {
+        console.log("🔌 Conectando ao banco de dados para limpar os aportes...");
+        
+        // Executa o comando para apagar todos os registros da tabela aportes
+        const resultado = await pool.query(`DELETE FROM aportes;`);
+        
+        console.log(`✅ Sucesso! Todos os aportes duplicados foram removidos do banco.`);
+        console.log(`🗑️ Total de linhas afetadas/apagadas.`);
+        
+        // Opcional: Se quiser resetar o contador do ID da tabela para começar do 1 novamente:
+        await pool.query(`ALTER SEQUENCE aportes_id_seq RESTART WITH 1;`);
+        console.log(`🔄 Contador de IDs da tabela aportes reiniciado para 1.`);
+
+    } catch (err) {
+        console.error("❌ Erro ao limpar os aportes:", err.message);
+    } finally {
+        await pool.end();
+        console.log("🔌 Conexão encerrada.");
+    }
+}
+
+limparAportes();

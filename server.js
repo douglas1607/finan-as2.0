@@ -590,9 +590,6 @@ async function iniciarBotUsuario(usuarioId) {
             const msg = m.messages[0];
             if (!msg || !msg.message) return;
 
-            // TRAVA DE SEGURANÇA: Ignora mensagens enviadas pelo próprio bot para evitar loop infinito
-            if (msg.key.fromMe) return;
-
             const remetenteRaw = msg.key.remoteJid;
             const textoMensagem = (
                 msg.message.conversation ||
@@ -602,6 +599,18 @@ async function iniciarBotUsuario(usuarioId) {
             ).trim();
 
             if (!textoMensagem) return;
+
+            // TRAVA ANTI-LOOP INTELIGENTE: Só ignora se for mensagem gerada automaticamente pelo próprio bot
+            if (msg.key.fromMe && (
+                textoMensagem.includes('Aporte na Reserva Registrado') || 
+                textoMensagem.includes('de FII Registrada') || 
+                textoMensagem.includes('de Ação Registrada') || 
+                textoMensagem.includes('de Cripto Registrada') ||
+                textoMensagem.includes('Entrada registrada no FinancIA') ||
+                textoMensagem.includes('Gasto registrado no FinancIA')
+            )) {
+                return;
+            }
 
             const textoMinusculo = textoMensagem.toLowerCase();
             const agora = new Date();
