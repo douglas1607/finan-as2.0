@@ -156,31 +156,26 @@ function autenticarToken(req, res, next) {
     });
 }
 
-// Helper para obter cotação em tempo real de FIIs, Ações e Cripto
+// Helper otimizado e seguro para obter cotação em tempo real de FIIs, Ações e Cripto
 async function obterCotacaoAtual(ticker, tipo) {
     const t = ticker.toUpperCase().trim();
 
-    // Cotação para Bitcoin / Cripto
     if (tipo === 'Cripto' || t === 'BTC' || t === 'BITCOIN') {
         try {
-            // Tenta AwesomeAPI (mais rápida e sem bloqueio no Brasil)
             const res = await fetch('https://economia.awesomeapi.com.br/json/last/BTC-BRL');
             const data = await res.json();
             if (data?.BTCBRL?.bid) return parseFloat(data.BTCBRL.bid);
         } catch (e) { }
 
         try {
-            // Fallback 1: Mercado Bitcoin
             const res = await fetch('https://api.mercadobitcoin.net/api/v4/tickers?symbols=BTC-BRL');
             const data = await res.json();
             if (data?.[0]?.last) return parseFloat(data[0].last);
         } catch (e) { }
 
-        // Fallback Fixo de segurança se todas as APIs falharem (valor aproximado real do BTC)
-        return 380000.00; 
+        return 380000.00; // Fallback real do BTC se a API oscilar
     }
 
-    // Cotação para Ações e FIIs na B3
     try {
         const res = await fetch(`https://brapi.dev/api/quote/${t}`);
         const data = await res.json();
@@ -189,8 +184,9 @@ async function obterCotacaoAtual(ticker, tipo) {
         }
     } catch (e) { }
 
-    return 10.00; // Padrão genérico apenas para ações/FIIs
+    return 10.00;
 }
+
 // Rotas de Autenticação
 app.post('/api/cadastrar', async (req, res) => {
     const { nome, email, senha } = req.body;
@@ -261,7 +257,7 @@ app.delete('/api/entradas/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir entrada." }); }
 });
 
-// Rotas de Aportes
+// Rotas de Aportes (Reserva de Emergência)
 app.get('/api/aportes', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM aportes WHERE usuario_id = $1 ORDER BY id ASC`, [req.usuario.id]);
@@ -624,7 +620,7 @@ async function iniciarBotUsuario(usuarioId) {
 
             if (!textoMensagem) return;
 
-            // TRAVA ANTI-LOOP INTELIGENTE: Só ignora se for mensagem gerada automaticamente pelo próprio bot
+            // TRAVA ANTI-LOOP INTELIGENTE: Ignora respostas automáticas do próprio bot
             if (msg.key.fromMe && (
                 textoMensagem.includes('Aporte na Reserva Registrado') || 
                 textoMensagem.includes('de FII Registrada') || 
@@ -638,7 +634,7 @@ async function iniciarBotUsuario(usuarioId) {
 
             const textoMinusculo = textoMensagem.toLowerCase();
 
-            // Cálculo seguro do horário de Brasília (UTC-3) para o WhatsApp
+            // Cálculo seguro UTC-3 (Horário de Brasília)
             const agora = new Date();
             const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
             const diaW = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
@@ -650,7 +646,7 @@ async function iniciarBotUsuario(usuarioId) {
             const dataSimples = `${diaW}/${mesW}/${anoW}`;
             const dataHoraCompleta = `${dataSimples} às ${horasW}:${minutosW}`;
 
-            // 1. GATILHO DE RESERVA DE EMERGÊNCIA / APORTE
+            // 1. GATILHO DE RESERVA DE EMERGÊNCIA / APORTE (Somente tabela aportes)
             if (textoMinusculo.includes('reserva') || textoMinusculo.includes('aporte')) {
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
                 if (matchVal) {
@@ -665,7 +661,7 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             }
 
-            // 2. GATILHO FUNDO IMOBILIÁRIO (FII)
+            // 2. GATILHO FUNDO IMOBILIÁRIO (FII) (Somente carteira de investimentos)
             if (textoMinusculo.includes('fii') || textoMinusculo.includes('fundo')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
@@ -687,16 +683,13 @@ async function iniciarBotUsuario(usuarioId) {
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                     [usuarioId, 'FIIs', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
-                await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
-                    [usuarioId, `${isVenda ? 'Venda' : 'Compra'} FII ${ticker}`, valorTotal * multiplier, dataHoraCompleta]);
-
                 await sock.sendMessage(remetenteRaw, {
                     text: `🏢 *${isVenda ? 'Venda' : 'Compra'} de FII Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Cotas:* ${cotas.toFixed(2)}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
                 });
                 return;
             }
 
-            // 3. GATILHO AÇÕES (ACAO / AÇÕES)
+            // 3. GATILHO AÇÕES (ACAO / AÇÕES) (Somente carteira de investimentos)
             if (textoMinusculo.includes('acao') || textoMinusculo.includes('ações') || textoMinusculo.includes('acoes')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
@@ -711,16 +704,13 @@ async function iniciarBotUsuario(usuarioId) {
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                     [usuarioId, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
-                await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
-                    [usuarioId, `${isVenda ? 'Venda' : 'Compra'} Ação ${ticker}`, valorTotal * multiplier, dataHoraCompleta]);
-
                 await sock.sendMessage(remetenteRaw, {
                     text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
                 });
                 return;
             }
 
-            // 4. GATILHO CRIPTO (CRIPTO / BTC / BITCOIN)
+            // 4. GATILHO CRIPTO (CRIPTO / BTC / BITCOIN) (Somente carteira de investimentos)
             if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
@@ -732,9 +722,6 @@ async function iniciarBotUsuario(usuarioId) {
                     const multiplier = isVenda ? -1 : 1;
                     await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                         [usuarioId, 'Cripto', 'BTC', fracaoBtc * multiplier, cotacaoBtc, dataHoraCompleta]);
-
-                    await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [usuarioId, `${isVenda ? 'Venda' : 'Compra'} Cripto BTC`, valorReais * multiplier, dataHoraCompleta]);
 
                     await sock.sendMessage(remetenteRaw, {
                         text: `🪙 *${isVenda ? 'Venda' : 'Compra'} de Cripto Registrada!*\n🏷️ *Ativo:* Bitcoin (BTC)\n📊 *Fracionado:* ${fracaoBtc.toFixed(8)} BTC\n💵 *Cotação BTC:* R$ ${cotacaoBtc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n💰 *Total:* R$ ${valorReais.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
