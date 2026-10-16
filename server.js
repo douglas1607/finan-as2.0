@@ -261,14 +261,18 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     const valNum = parseFloat(valor);
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
     
-    // Força a obtenção da data e hora exatas no fuso de Brasília de forma segura
-    const textoMinusculo = textoMensagem.toLowerCase();
-            
-            // Correção definitiva do fuso horário para o Brasil
-            const agora = new Date();
-            const dataSimples = agora.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-            const horaSimples = agora.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
-            const dataHoraCompleta = `${dataSimples} às ${horaSimples}`;
+    // Cálculo seguro do horário de Brasília (UTC-3)
+    const agora = new Date();
+    const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
+    const dia = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
+    const mesStr = String(agoraBrasilia.getUTCMonth() + 1).padStart(2, '0');
+    const ano = agoraBrasilia.getUTCFullYear();
+    const horas = String(agoraBrasilia.getUTCHours()).padStart(2, '0');
+    const minutos = String(agoraBrasilia.getUTCMinutes()).padStart(2, '0');
+
+    const dataSimples = `${dia}/${mesStr}/${ano}`;
+    const dataHoraCompleta = `${dataSimples} às ${horas}:${minutos}`;
+
     try {
         const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataHoraCompleta]);
         res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataHoraCompleta });
@@ -620,9 +624,18 @@ async function iniciarBotUsuario(usuarioId) {
             }
 
             const textoMinusculo = textoMensagem.toLowerCase();
+
+            // Cálculo seguro do horário de Brasília (UTC-3) para o WhatsApp
             const agora = new Date();
-            const dataHoraCompleta = `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-            const dataSimples = agora.toLocaleDateString('pt-BR');
+            const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
+            const diaW = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
+            const mesW = String(agoraBrasilia.getUTCMonth() + 1).padStart(2, '0');
+            const anoW = agoraBrasilia.getUTCFullYear();
+            const horasW = String(agoraBrasilia.getUTCHours()).padStart(2, '0');
+            const minutosW = String(agoraBrasilia.getUTCMinutes()).padStart(2, '0');
+
+            const dataSimples = `${diaW}/${mesW}/${anoW}`;
+            const dataHoraCompleta = `${dataSimples} às ${horasW}:${minutosW}`;
 
             // 1. GATILHO DE RESERVA DE EMERGÊNCIA / APORTE
             if (textoMinusculo.includes('reserva') || textoMinusculo.includes('aporte')) {
@@ -768,12 +781,11 @@ async function iniciarBotUsuario(usuarioId) {
 
             if (resultado.eGasto) {
                 const valorNum = parseFloat(resultado.valor);
-                const dataHoje = new Date().toLocaleDateString('pt-BR');
 
                 if (resultado.tipo === 'entrada') {
                     await pool.query(
                         `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [usuarioId, resultado.descricao, valorNum, dataHoje]
+                        [usuarioId, resultado.descricao, valorNum, dataSimples]
                     );
 
                     await sock.sendMessage(remetenteRaw, {
@@ -813,7 +825,7 @@ async function iniciarBotUsuario(usuarioId) {
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [usuarioId, resultado.descricao, valorNum, cat, dataHoje]
+                        [usuarioId, resultado.descricao, valorNum, cat, dataSimples]
                     );
 
                     await sock.sendMessage(remetenteRaw, {
