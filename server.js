@@ -159,15 +159,28 @@ function autenticarToken(req, res, next) {
 // Helper para obter cotação em tempo real de FIIs, Ações e Cripto
 async function obterCotacaoAtual(ticker, tipo) {
     const t = ticker.toUpperCase().trim();
+
+    // Cotação para Bitcoin / Cripto
     if (tipo === 'Cripto' || t === 'BTC' || t === 'BITCOIN') {
         try {
-            const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl');
+            // Tenta AwesomeAPI (mais rápida e sem bloqueio no Brasil)
+            const res = await fetch('https://economia.awesomeapi.com.br/json/last/BTC-BRL');
             const data = await res.json();
-            if (data?.bitcoin?.brl) return parseFloat(data.bitcoin.brl);
-        } catch (e) {
-            return 418868.00;
-        }
+            if (data?.BTCBRL?.bid) return parseFloat(data.BTCBRL.bid);
+        } catch (e) { }
+
+        try {
+            // Fallback 1: Mercado Bitcoin
+            const res = await fetch('https://api.mercadobitcoin.net/api/v4/tickers?symbols=BTC-BRL');
+            const data = await res.json();
+            if (data?.[0]?.last) return parseFloat(data[0].last);
+        } catch (e) { }
+
+        // Fallback Fixo de segurança se todas as APIs falharem (valor aproximado real do BTC)
+        return 380000.00; 
     }
+
+    // Cotação para Ações e FIIs na B3
     try {
         const res = await fetch(`https://brapi.dev/api/quote/${t}`);
         const data = await res.json();
@@ -175,9 +188,9 @@ async function obterCotacaoAtual(ticker, tipo) {
             return parseFloat(data.results[0].regularMarketPrice);
         }
     } catch (e) { }
-    return 10.00;
-}
 
+    return 10.00; // Padrão genérico apenas para ações/FIIs
+}
 // Rotas de Autenticação
 app.post('/api/cadastrar', async (req, res) => {
     const { nome, email, senha } = req.body;
