@@ -178,12 +178,13 @@ async function carregarAtivosPortfolio() {
 
             if (container) {
                 const dataFormatada = item.data_compra ? item.data_compra : 'Data não inf.';
+                const qtdExibida = item.tipo === 'Cripto' ? Number(item.quantidade).toFixed(8) : item.quantidade;
                 const div = document.createElement('div');
                 div.className = 'transaction-item';
                 div.innerHTML = `
                     <div>
                         <strong>${item.ticker} (${item.tipo})</strong>
-                        <small>Qtd: ${item.quantidade} • Preço: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Data: ${dataFormatada} • Total: R$ ${valorCalculado.toFixed(2)}</small>
+                        <small>Qtd: ${qtdExibida} • Preço: R$ ${Number(item.preco_medio || 0).toFixed(2)} • Data: ${dataFormatada} • Total: R$ ${valorCalculado.toFixed(2)}</small>
                     </div>
                     <button onclick="removerAtivo(${item.id})" style="background:none; border:none; cursor:pointer;" title="Excluir ativo">${ICONE_LIXEIRA_SVG}</button>
                 `;
@@ -232,7 +233,6 @@ async function adicionarAtivoPortfolio() {
     const mesAtualNome = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
     try {
-        // 1. Cadastra o ativo no Portfólio
         const res = await fetch(`${API_URL}/ativos`, {
             method: 'POST',
             headers: {
@@ -243,7 +243,6 @@ async function adicionarAtivoPortfolio() {
         });
 
         if (res.ok) {
-            // 2. Registra automaticamente o valor investido como APORTE no balanço do mês
             await fetch(`${API_URL}/aportes`, {
                 method: 'POST',
                 headers: {
@@ -261,7 +260,6 @@ async function adicionarAtivoPortfolio() {
             precoInput.value = '';
             alternarFormulario('formAlocacao');
             
-            // Recarrega os dados do dashboard
             carregarAtivosPortfolio();
             carregarAportesBD();
         } else {
@@ -272,6 +270,7 @@ async function adicionarAtivoPortfolio() {
         alert("Erro ao conectar com o servidor.");
     }
 }
+
 async function removerAtivo(id) {
     try {
         await fetch(`${API_URL}/ativos/${id}`, {
@@ -818,8 +817,9 @@ async function carregarAportesBD() {
             const v = parseFloat(item.valor) || 0;
             totalAportesAcumulado += v;
 
+            const rotuloData = item.data ? item.data : item.mes;
             if (chartPerformance) {
-                chartPerformance.data.labels.push(item.mes);
+                chartPerformance.data.labels.push(rotuloData);
                 chartPerformance.data.datasets[0].data.push(v);
             }
 
@@ -828,8 +828,8 @@ async function carregarAportesBD() {
                 div.className = 'transaction-item';
                 div.innerHTML = `
                     <div>
-                        <strong>${item.mes}</strong>
-                        <small>Aporte de Reserva</small>
+                        <strong>🎯 ${item.mes}</strong>
+                        <small style="color: #888;">📅 ${item.data || 'Registrado'}</small>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span class="privacy-target" style="color: var(--verde-destaque); font-weight:700;">R$ ${v.toFixed(2).replace('.', ',')}</span>
@@ -841,7 +841,27 @@ async function carregarAportesBD() {
         });
 
         if (chartPerformance) chartPerformance.update();
-        salvarMetaReserva();
+        
+        // Validação da Meta de Reserva (R$ 10.000) e Sugestão IA
+        const metaReserva = 10000;
+        const pct = Math.min((totalAportesAcumulado / metaReserva) * 100, 100);
+        const metaTextoAtual = document.getElementById('metaTextDisplay');
+        if (metaTextoAtual) {
+            metaTextoAtual.innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / R$ ${metaReserva.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (${pct.toFixed(1)}%)`;
+        }
+        const barra = document.getElementById('metaProgressBar');
+        if (barra) barra.style.width = `${pct}%`;
+
+        const aiSugestaoMeta = document.getElementById('aiSugestaoMetaReserva');
+        if (aiSugestaoMeta) {
+            if (totalAportesAcumulado >= metaReserva) {
+                aiSugestaoMeta.innerHTML = `🎉 **Parabéns! Meta de R$ 10.000,00 Atingida!**<br>💡 *Sugestão da IA:* Sua reserva principal está consolidada. Recomendamos expandir sua nova meta de reserva para **R$ 15.000,00** ou intensificar os aportes em FIIs e Ações.`;
+            } else {
+                const falta = metaReserva - totalAportesAcumulado;
+                aiSugestaoMeta.innerText = `🎯 Faltam R$ ${falta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} para atingir sua meta de R$ 10.000,00 em reserva. Mantenha os aportes regulares!`;
+            }
+        }
+
         carregarAtivosPortfolio();
         atualizarGraficoBalanco();
     } catch (e) { }
@@ -892,11 +912,9 @@ async function adicionarAporteMes() {
 function atualizarGraficoBalanco() {
     if (!chartBalanco) return;
 
-    // Helper para extrair número puro de elementos HTML de texto de moeda
     const extrairValorTexto = (seletor) => {
         return Array.from(document.querySelectorAll(seletor)).reduce((acc, el) => {
             let txt = el.innerText || '';
-            // Limpa tudo que não for número, vírgula ou ponto
             txt = txt.replace(/[-+R$\s]/g, '').replace(/\./g, '').replace(',', '.');
             const val = parseFloat(txt) || 0;
             return acc + val;
@@ -911,17 +929,14 @@ function atualizarGraficoBalanco() {
     const totalSaidasGeral = totalGastosConsumo + totalAportesAcumulado;
     const saldoLivreReal = totalEntradas - totalSaidasGeral;
 
-    // Atualiza o gráfico de barras (Entradas vs Saídas)
     chartBalanco.data.datasets[0].data = [totalEntradas, totalSaidasGeral];
     chartBalanco.update();
 
-    // Atualiza os Cards do Rodapé do Balanço
     if (document.getElementById('cardResumoEntradas')) document.getElementById('cardResumoEntradas').innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoSaidas')) document.getElementById('cardResumoSaidas').innerText = `R$ ${totalGastosConsumo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoAportes')) document.getElementById('cardResumoAportes').innerText = `R$ ${totalAportesAcumulado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     if (document.getElementById('cardResumoLiquido')) document.getElementById('cardResumoLiquido').innerText = `R$ ${saldoLivreReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 
-    // Cálculo das porcentagens do Orçamento
     const pctComprometido = totalEntradas > 0 ? (totalSaidasGeral / totalEntradas) * 100 : (totalSaidasGeral > 0 ? 100 : 0);
     const pctGastos = totalEntradas > 0 ? (totalGastosConsumo / totalEntradas) * 100 : 0;
     const pctAportes = totalEntradas > 0 ? (totalAportesAcumulado / totalEntradas) * 100 : 0;
@@ -942,7 +957,6 @@ function atualizarGraficoBalanco() {
         textoGasto.innerText = `${pctComprometido.toFixed(1).replace('.', ',')}% de gastos`;
 
         if (saldoLivreReal < 0) {
-            // CENÁRIO DEFICITÁRIO (SAÍDAS > ENTRADAS)
             barraGasto.style.backgroundColor = '#ff6b6b';
             if (badgeStatus) {
                 badgeStatus.innerText = 'Déficit';
@@ -962,7 +976,6 @@ function atualizarGraficoBalanco() {
             }
 
         } else if (pctComprometido <= 70) {
-            // CENÁRIO SAUDÁVEL (<= 70% COMPROMETIDO)
             barraGasto.style.backgroundColor = '#00ff88';
             if (badgeStatus) {
                 badgeStatus.innerText = 'Saudável';
@@ -982,7 +995,6 @@ function atualizarGraficoBalanco() {
             }
 
         } else {
-            // CENÁRIO ATENÇÃO (70% A 100% COMPROMETIDO)
             barraGasto.style.backgroundColor = '#f1c40f';
             if (badgeStatus) {
                 badgeStatus.innerText = 'Atenção';

@@ -50,8 +50,7 @@ pool.connect((err) => {
 
 // Keep-Alive para evitar que o Render entre em modo de espera (sleep)
 setInterval(() => {
-    const urlPing = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-    fetch(`${urlPing}/api/entradas`).catch(() => { });
+    const urlPing = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`; fetch(`${urlPing}/api/entradas`).catch(() => { });
 }, 10 * 60 * 1000);
 
 async function inicializarTabelas() {
@@ -84,7 +83,7 @@ async function inicializarTabelas() {
                 usuario_id INTEGER,
                 tipo VARCHAR(50),
                 ticker VARCHAR(50),
-                quantidade NUMERIC(10,4),
+                quantidade NUMERIC(15,8),
                 preco_medio NUMERIC(10,2),
                 data_compra VARCHAR(50)
             );
@@ -98,12 +97,13 @@ async function inicializarTabelas() {
             CREATE TABLE IF NOT EXISTS aportes (
                 id SERIAL PRIMARY KEY,
                 usuario_id INTEGER,
-                mes VARCHAR(50),
+                mes VARCHAR(255),
                 valor NUMERIC(10,2),
                 data VARCHAR(50)
             );
         `);
         await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
+        await pool.query(`ALTER TABLE ativos_portfolio ALTER COLUMN quantidade TYPE NUMERIC(15,8);`);
         console.log("✅ Tabelas PostgreSQL verificadas/criadas com sucesso!");
     } catch (e) {
         console.error("Erro ao inicializar tabelas:", e.message);
@@ -153,6 +153,28 @@ function autenticarToken(req, res, next) {
         req.usuario = usuario;
         next();
     });
+}
+
+// Helper para obter cotação em tempo real de FIIs, Ações e Cripto
+async function obterCotacaoAtual(ticker, tipo) {
+    const t = ticker.toUpperCase().trim();
+    if (tipo === 'Cripto' || t === 'BTC' || t === 'BITCOIN') {
+        try {
+            const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=brl');
+            const data = await res.json();
+            if (data?.bitcoin?.brl) return parseFloat(data.bitcoin.brl);
+        } catch (e) {
+            return 418868.00;
+        }
+    }
+    try {
+        const res = await fetch(`https://brapi.dev/api/quote/${t}`);
+        const data = await res.json();
+        if (data?.results?.[0]?.regularMarketPrice) {
+            return parseFloat(data.results[0].regularMarketPrice);
+        }
+    } catch (e) { }
+    return 10.00;
 }
 
 // Rotas de Autenticação
@@ -237,10 +259,11 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     const { mes, valor } = req.body;
     const valNum = parseFloat(valor);
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
-    const dataHoje = new Date().toLocaleDateString('pt-BR');
+    const agora = new Date();
+    const dataFormatada = `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
     try {
-        const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataHoje]);
-        res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataHoje });
+        const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataFormatada]);
+        res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataFormatada });
     } catch (err) { res.status(500).json({ erro: "Erro ao salvar aporte." }); }
 });
 
@@ -577,8 +600,104 @@ async function iniciarBotUsuario(usuarioId) {
             if (!textoMensagem) return;
 
             const textoMinusculo = textoMensagem.toLowerCase();
-            const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
+            const agora = new Date();
+            const dataHoraCompleta = `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+            const dataSimples = agora.toLocaleDateString('pt-BR');
 
+            // 1. GATILHO DE RESERVA DE EMERGÊNCIA / APORTE
+            if (textoMinusculo.includes('reserva') || textoMinusculo.includes('aporte')) {
+                const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
+                if (matchVal) {
+                    const valor = parseFloat(matchVal[0].replace(',', '.'));
+                    await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
+                        [usuarioId, `Reserva de Emergência (${dataSimples})`, valor, dataHoraCompleta]);
+
+                    await sock.sendMessage(remetenteRaw, {
+                        text: `🎯 *Aporte na Reserva Registrado!*\n💰 *Valor:* R$ ${valor.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
+                    });
+                    return;
+                }
+            }
+
+            // 2. GATILHO FUNDO IMOBILIÁRIO (FII)
+            if (textoMinusculo.includes('fii') || textoMinusculo.includes('fundo')) {
+                const isVenda = textoMinusculo.includes('vendi');
+                const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
+                const matchVal = textoMensagem.match(/\d+([.,]\d+)?\s*reais/i) || textoMensagem.match(/r\$\s*\d+([.,]\d+)?/i);
+                const matchTicker = textoMensagem.match(/\b([a-zA-Z]{4}\d{1,2})\b/);
+
+                const ticker = matchTicker ? matchTicker[1].toUpperCase() : 'MXRF11';
+                const cotacao = await obterCotacaoAtual(ticker, 'FIIs');
+
+                let cotas = matchCotas ? parseFloat(matchCotas[1]) : 1;
+                let valorTotal = cotas * cotacao;
+
+                if (matchVal) {
+                    valorTotal = parseFloat(matchVal[0].replace(/[^0-9.,]/g, '').replace(',', '.'));
+                    cotas = valorTotal / cotacao;
+                }
+
+                const multiplier = isVenda ? -1 : 1;
+                await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [usuarioId, 'FIIs', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
+
+                await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
+                    [usuarioId, `${isVenda ? 'Venda' : 'Compra'} FII ${ticker}`, valorTotal * multiplier, dataHoraCompleta]);
+
+                await sock.sendMessage(remetenteRaw, {
+                    text: `🏢 *${isVenda ? 'Venda' : 'Compra'} de FII Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Cotas:* ${cotas.toFixed(2)}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
+                });
+                return;
+            }
+
+            // 3. GATILHO AÇÕES (ACAO / AÇÕES)
+            if (textoMinusculo.includes('acao') || textoMinusculo.includes('ações') || textoMinusculo.includes('acoes')) {
+                const isVenda = textoMinusculo.includes('vendi');
+                const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
+                const matchTicker = textoMensagem.match(/\b([a-zA-Z]{4}\d{1,2})\b/);
+
+                const ticker = matchTicker ? matchTicker[1].toUpperCase() : 'PETR4';
+                const cotacao = await obterCotacaoAtual(ticker, 'Ações');
+                let cotas = matchCotas ? parseFloat(matchCotas[1]) : 1;
+                let valorTotal = cotas * cotacao;
+
+                const multiplier = isVenda ? -1 : 1;
+                await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [usuarioId, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
+
+                await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
+                    [usuarioId, `${isVenda ? 'Venda' : 'Compra'} Ação ${ticker}`, valorTotal * multiplier, dataHoraCompleta]);
+
+                await sock.sendMessage(remetenteRaw, {
+                    text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
+                });
+                return;
+            }
+
+            // 4. GATILHO CRIPTO (CRIPTO / BTC / BITCOIN)
+            if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
+                const isVenda = textoMinusculo.includes('vendi');
+                const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
+                if (matchVal) {
+                    const valorReais = parseFloat(matchVal[0].replace(',', '.'));
+                    const cotacaoBtc = await obterCotacaoAtual('BTC', 'Cripto');
+                    const fracaoBtc = valorReais / cotacaoBtc;
+
+                    const multiplier = isVenda ? -1 : 1;
+                    await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
+                        [usuarioId, 'Cripto', 'BTC', fracaoBtc * multiplier, cotacaoBtc, dataHoraCompleta]);
+
+                    await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
+                        [usuarioId, `${isVenda ? 'Venda' : 'Compra'} Cripto BTC`, valorReais * multiplier, dataHoraCompleta]);
+
+                    await sock.sendMessage(remetenteRaw, {
+                        text: `🪙 *${isVenda ? 'Venda' : 'Compra'} de Cripto Registrada!*\n🏷️ *Ativo:* Bitcoin (BTC)\n📊 *Fracionado:* ${fracaoBtc.toFixed(8)} BTC\n💵 *Cotação BTC:* R$ ${cotacaoBtc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n💰 *Total:* R$ ${valorReais.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
+                    });
+                    return;
+                }
+            }
+
+            const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
             if (!temGatilho) return;
 
