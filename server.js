@@ -262,11 +262,13 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
     
     // Força a obtenção da data e hora exatas no fuso de Brasília de forma segura
-    const agora = new Date();
-    const dataSimples = agora.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-    const horaSimples = agora.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
-    const dataHoraCompleta = `${dataSimples} às ${horaSimples}`;
-
+    const textoMinusculo = textoMensagem.toLowerCase();
+            
+            // Correção definitiva do fuso horário para o Brasil
+            const agora = new Date();
+            const dataSimples = agora.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            const horaSimples = agora.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false });
+            const dataHoraCompleta = `${dataSimples} às ${horaSimples}`;
     try {
         const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataHoraCompleta]);
         res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataHoraCompleta });
