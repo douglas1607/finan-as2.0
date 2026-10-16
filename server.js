@@ -261,10 +261,10 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     const valNum = parseFloat(valor);
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
     const agora = new Date();
-    const dataFormatada = `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    const dataHoraCompleta = `${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}`;
     try {
-        const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataFormatada]);
-        res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataFormatada });
+        const result = await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4) RETURNING id`, [req.usuario.id, mes, valNum, dataHoraCompleta]);
+        res.status(201).json({ id: result.rows[0].id, mes, valor: valNum, data: dataHoraCompleta });
     } catch (err) { res.status(500).json({ erro: "Erro ao salvar aporte." }); }
 });
 
