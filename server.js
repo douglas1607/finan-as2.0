@@ -622,11 +622,11 @@ async function iniciarBotUsuario(usuarioId) {
                         console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
 
                         // Define a foto
-                        const caminhoFoto = path.join(__dirname, 'icon.jpg');
+                        const caminhoFoto = path.join(__dirname, 'icon.png');
                         if (fs.existsSync(caminhoFoto)) {
                             const bufferFoto = fs.readFileSync(caminhoFoto);
                             await sock.updateProfilePicture(targetGroupId, bufferFoto);
-                            console.log(`🖼️ [WHATSAPP] Foto 'icon.jpg' definida para o grupo!`);
+                            console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
                         }
 
                         // Mensagem de Boas-vindas
