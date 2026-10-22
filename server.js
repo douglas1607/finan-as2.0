@@ -117,29 +117,38 @@ inicializarTabelas();
 // Modelos oficiais suportados pelo SDK atual do Gemini
 const MODELOS_DISPONIVEIS = [
     'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
+    'gemini-1.5-flash-latest'
 ];
 
-async function chamarComRetry(prompt) {
+async function chamarComRetry(prompt, imagemBase64 = null) {
     let ultimoErro = null;
 
     for (const modelo of MODELOS_DISPONIVEIS) {
         for (let tentativa = 1; tentativa <= 2; tentativa++) {
             try {
+                // Estrutura o conteúdo (Texto + Imagem se existir)
+                let parts = [{ text: prompt }];
+
+                if (imagemBase64) {
+                    parts.push({
+                        inlineData: {
+                            mimeType: "image/jpeg",
+                            data: imagemBase64
+                        }
+                    });
+                }
+
                 const response = await ai.models.generateContent({
                     model: modelo,
-                    contents: prompt
+                    contents: parts
                 });
-                return response;
+
+                if (response && response.text) {
+                    return response;
+                }
             } catch (err) {
                 ultimoErro = err;
-                console.warn(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}):${err.message}`);
-                if (err.message.includes('503') || err.message.includes('UNAVAILABLE') || err.message.includes('429')) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } else {
-                    break;
-                }
+                console.log(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}):`, err.message);
             }
         }
     }
