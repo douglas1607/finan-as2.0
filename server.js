@@ -50,7 +50,7 @@ pool.connect((err) => {
 
 // Keep-Alive para evitar que o Render entre em modo de espera (sleep)
 setInterval(() => {
-    const urlPing = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`; 
+    const urlPing = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
     fetch(`${urlPing}/api/entradas`).catch(() => { });
 }, 10 * 60 * 1000);
 
@@ -269,7 +269,7 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     const { mes, valor } = req.body;
     const valNum = parseFloat(valor);
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
-    
+
     // Cálculo seguro do horário de Brasília (UTC-3)
     const agora = new Date();
     const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
@@ -312,28 +312,28 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     let categoria = "Compras";
 
     if (
-        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') || 
-        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') || 
-        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') || 
-        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') || 
+        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
+        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
+        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') ||
+        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') ||
         descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
     ) {
         categoria = 'Transporte';
     } else if (
-        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') || 
-        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') || 
+        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') ||
+        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') ||
         descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar')
     ) {
         categoria = 'Lazer';
     } else if (
-        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') || 
-        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('feira') || 
+        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') ||
+        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('feira') ||
         descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
     ) {
         categoria = 'Mercado';
     } else if (
-        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || 
-        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') || 
+        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') ||
+        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') ||
         descNorm.includes('condominio') || descNorm.includes('acessorios')
     ) {
         categoria = 'Casa';
@@ -576,7 +576,7 @@ async function iniciarBotUsuario(usuarioId) {
         keepAliveIntervalMs: 30000
     });
 
-    sessoesWhatsApp[usuarioId] = { sock, status: 'iniciando', qr: '' };
+    sessoesWhatsApp[usuarioId] = { sock, status: 'iniciando', qr: '', grupoId: null };
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -602,8 +602,73 @@ async function iniciarBotUsuario(usuarioId) {
             sessoesWhatsApp[usuarioId].status = 'conectado';
             sessoesWhatsApp[usuarioId].qr = '';
             console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
+
+            // 1. VERIFICA SE O GRUPO JÁ EXISTE OU CRIA UM NOVO
+            setTimeout(async () => {
+                try {
+                    const todosGrupos = await sock.groupFetchAllParticipating();
+                    let grupoExistente = Object.values(todosGrupos).find(g => g.subject === "FinancIA - Gestão Financeira");
+
+                    let targetGroupId = null;
+
+                    if (grupoExistente) {
+                        targetGroupId = grupoExistente.id;
+                        console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
+                    } else {
+                        // Cria o grupo e adiciona a si mesmo
+                        const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                        const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
+                        targetGroupId = resGrupo.id;
+                        console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
+
+                        // Define a foto
+                        const caminhoFoto = path.join(__dirname, 'icon.jpg');
+                        if (fs.existsSync(caminhoFoto)) {
+                            const bufferFoto = fs.readFileSync(caminhoFoto);
+                            await sock.updateProfilePicture(targetGroupId, bufferFoto);
+                            console.log(`🖼️ [WHATSAPP] Foto 'icon.jpg' definida para o grupo!`);
+                        }
+
+                        // Mensagem de Boas-vindas
+                        const mensagemBoasVindas = 
+`👋 *Bem-vindo ao FinancIA Autônoma!*
+
+Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos. Todas as mensagens enviadas aqui serão organizadas automaticamente no seu painel!
+
+📌 *Como registrar seus dados (Comandos e Gatilhos):*
+
+💸 *Gastos e Compras:*
+• Envie: \`gasto 25 mercado\`
+• Envie: \`paguei 40 gasolina\`
+• Envie: \`comprei 150 farmácia\`
+
+💰 *Entradas e Salários:*
+• Envie: \`entrada 1200 salário\`
+• Envie: \`recebi 150 pix do cliente\`
+
+🎯 *Reserva de Emergência:*
+• Envie: \`reserva 200\` ou \`aporte 500\`
+
+📈 *Investimentos (Carteira):*
+• *FIIs:* \`fii 10 cotas MXRF11\`
+• *Ações:* \`compra 5 acoes PETR4\`
+• *Cripto:* \`cripto 100 bitcoin\`
+
+🚀 *Dica:* Você também pode enviar comprovantes em foto ou áudios que nossa IA irá interpretar para você!`;
+
+                        await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
+                    }
+
+                    // Salva o ID do Grupo para Trava de Segurança
+                    sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
+
+                } catch (errGrupo) {
+                    console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
+                }
+            }, 2000);
         }
     });
+
 
     sock.ev.on('messages.upsert', async (m) => {
         try {
@@ -611,6 +676,13 @@ async function iniciarBotUsuario(usuarioId) {
             if (!msg || !msg.message) return;
 
             const remetenteRaw = msg.key.remoteJid;
+
+            // 🛑 TRAVA SEVERA: IGNORA QUALQUER MENSAGEM QUE NÃO VENHA DO GRUPO OFICIAL DO FINANCIA
+            const idGrupoOficial = sessoesWhatsApp[usuarioId]?.grupoId;
+            if (idGrupoOficial && remetenteRaw !== idGrupoOficial) {
+                return; // Ignora conversas privadas, grupos de terceiros, etc.
+            }
+
             const textoMensagem = (
                 msg.message.conversation ||
                 msg.message.extendedTextMessage?.text ||
@@ -620,7 +692,7 @@ async function iniciarBotUsuario(usuarioId) {
 
             if (!textoMensagem) return;
 
-            // TRAVA ANTI-LOOP INTELIGENTE: Ignora respostas automáticas do próprio bot
+            // TRAVA ANTI-LOOP INTELIGENTE: Ignora mensagens do próprio bot
             if (msg.key.fromMe && (
                 textoMensagem.includes('Aporte na Reserva Registrado') || 
                 textoMensagem.includes('de FII Registrada') || 
@@ -634,7 +706,6 @@ async function iniciarBotUsuario(usuarioId) {
 
             const textoMinusculo = textoMensagem.toLowerCase();
 
-            // Cálculo seguro UTC-3 (Horário de Brasília)
             const agora = new Date();
             const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
             const diaW = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
@@ -646,7 +717,7 @@ async function iniciarBotUsuario(usuarioId) {
             const dataSimples = `${diaW}/${mesW}/${anoW}`;
             const dataHoraCompleta = `${dataSimples} às ${horasW}:${minutosW}`;
 
-            // 1. GATILHO DE RESERVA DE EMERGÊNCIA / APORTE (Somente tabela aportes)
+            // 1. RESERVA DE EMERGÊNCIA
             if (textoMinusculo.includes('reserva') || textoMinusculo.includes('aporte')) {
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
                 if (matchVal) {
@@ -661,7 +732,7 @@ async function iniciarBotUsuario(usuarioId) {
                 }
             }
 
-            // 2. GATILHO FUNDO IMOBILIÁRIO (FII) (Somente carteira de investimentos)
+            // 2. FIIs
             if (textoMinusculo.includes('fii') || textoMinusculo.includes('fundo')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
@@ -689,7 +760,7 @@ async function iniciarBotUsuario(usuarioId) {
                 return;
             }
 
-            // 3. GATILHO AÇÕES (ACAO / AÇÕES) (Somente carteira de investimentos)
+            // 3. AÇÕES
             if (textoMinusculo.includes('acao') || textoMinusculo.includes('ações') || textoMinusculo.includes('acoes')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
@@ -710,7 +781,7 @@ async function iniciarBotUsuario(usuarioId) {
                 return;
             }
 
-            // 4. GATILHO CRIPTO (CRIPTO / BTC / BITCOIN) (Somente carteira de investimentos)
+            // 4. CRIPTO
             if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
@@ -746,7 +817,6 @@ async function iniciarBotUsuario(usuarioId) {
             const promptIA = `
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
             Mensagem: "${textoLimpo}"
-
             Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
             {"eGasto": true, "descricao": "Venda", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
             `;
@@ -838,6 +908,7 @@ async function iniciarBotUsuario(usuarioId) {
         }
     });
 }
+
 
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     const usuarioId = req.usuario.id;
