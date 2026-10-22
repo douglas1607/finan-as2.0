@@ -20,7 +20,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.4.0",
     "ofx-data-extractor": "^1.5.0",
-    "pdf-parse": "^2.4.5",
+    "pdf2json": "^4.0.3",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"

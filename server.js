@@ -15,7 +15,7 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET_JWT = process.env.JWT_SECRET || "financia_autonoma_chave_secreta_2026";
-const pdfParse = require('pdf-parse');
+const PDFParse = require('pdf2json');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 app.use(cors({
@@ -719,12 +719,19 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             let imagemBase64 = null;
             let textoExtraidoPDF = '';
 
+            
             // 1. Processa Comprovante em PDF
             if (ehPDF) {
                 try {
                     const bufferPDF = await downloadMediaMessage(msg, 'buffer', {});
-                    const dadosPDF = await pdfParse(bufferPDF);
-                    textoExtraidoPDF = dadosPDF.text || '';
+                    textoExtraidoPDF = await new Promise((resolve) => {
+                        const pdfParser = new PDFParser(null, 1);
+                        pdfParser.on("pdfParser_dataError", errData => resolve(""));
+                        pdfParser.on("pdfParser_dataReady", pdfData => {
+                            resolve(pdfParser.getRawTextContent());
+                        });
+                        pdfParser.parseBuffer(bufferPDF);
+                    });
                     console.log("📄 [COMPROVANTE PDF] Texto extraído com sucesso!");
                 } catch (errPdf) {
                     console.error("Erro ao ler comprovante PDF:", errPdf.message);
