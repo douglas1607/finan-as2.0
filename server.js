@@ -116,9 +116,9 @@ inicializarTabelas();
 
 // Modelos oficiais suportados pelo SDK atual do Gemini
 const MODELOS_DISPONIVEIS = [
-    'gemini-3.8-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
+   
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
 ];
 
 async function chamarComRetry(prompt, imagemBase64 = null) {
