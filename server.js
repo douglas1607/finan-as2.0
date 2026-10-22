@@ -15,6 +15,8 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET_JWT = process.env.JWT_SECRET || "financia_autonoma_chave_secreta_2026";
+const pdfParse = require('pdf-parse');
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 app.use(cors({
     origin: '*',
@@ -630,8 +632,8 @@ async function iniciarBotUsuario(usuarioId) {
                         }
 
                         // Mensagem de Boas-vindas
-                        const mensagemBoasVindas = 
-`👋 *Bem-vindo ao FinancIA Autônoma!*
+                        const mensagemBoasVindas =
+                            `👋 *Bem-vindo ao FinancIA Autônoma!*
 
 Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos. Todas as mensagens enviadas aqui serão organizadas automaticamente no seu painel!
 
@@ -683,26 +685,165 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 return; // Ignora conversas privadas, grupos de terceiros, etc.
             }
 
-            const textoMensagem = (
+            // 🛑 TRAVA ANTI-LOOP INTELIGENTE: Ignora mensagens de texto enviadas pelo próprio bot
+            const textoChecagem = (
                 msg.message.conversation ||
                 msg.message.extendedTextMessage?.text ||
                 msg.message.imageMessage?.caption ||
+                msg.message.documentMessage?.caption ||
                 ''
             ).trim();
 
-            if (!textoMensagem) return;
-
-            // TRAVA ANTI-LOOP INTELIGENTE: Ignora mensagens do próprio bot
             if (msg.key.fromMe && (
-                textoMensagem.includes('Aporte na Reserva Registrado') || 
-                textoMensagem.includes('de FII Registrada') || 
-                textoMensagem.includes('de Ação Registrada') || 
-                textoMensagem.includes('de Cripto Registrada') ||
-                textoMensagem.includes('Entrada registrada no FinancIA') ||
-                textoMensagem.includes('Gasto registrado no FinancIA')
+                textoChecagem.includes('Aporte na Reserva Registrado') || 
+                textoChecagem.includes('de FII Registrada') || 
+                textoChecagem.includes('de Ação Registrada') || 
+                textoChecagem.includes('de Cripto Registrada') ||
+                textoChecagem.includes('Entrada registrada no FinancIA') ||
+                textoChecagem.includes('Gasto registrado no FinancIA') ||
+                textoChecagem.includes('Comprovante Registrado') ||
+                textoChecagem.includes('Comprovante de Entrada Registrado')
             )) {
                 return;
             }
+
+            // ==========================================
+            // DETECÇÃO DE MÍDIA (IMAGENS E PDFS)
+            // ==========================================
+            const ehImagem = !!msg.message.imageMessage;
+            const ehDocumento = !!msg.message.documentMessage;
+            const mimeTypeDoc = msg.message.documentMessage?.mimetype || '';
+            const ehPDF = ehDocumento && mimeTypeDoc.includes('pdf');
+
+            let textoMensagem = textoChecagem;
+            let imagemBase64 = null;
+            let textoExtraidoPDF = '';
+
+            // 1. Processa Comprovante em PDF
+            if (ehPDF) {
+                try {
+                    const bufferPDF = await downloadMediaMessage(msg, 'buffer', {});
+                    const dadosPDF = await pdfParse(bufferPDF);
+                    textoExtraidoPDF = dadosPDF.text || '';
+                    console.log("📄 [COMPROVANTE PDF] Texto extraído com sucesso!");
+                } catch (errPdf) {
+                    console.error("Erro ao ler comprovante PDF:", errPdf.message);
+                }
+            }
+
+            // 2. Processa Comprovante em Imagem
+            if (ehImagem) {
+                try {
+                    const bufferImagem = await downloadMediaMessage(msg, 'buffer', {});
+                    imagemBase64 = bufferImagem.toString('base64');
+                    console.log("🖼️ [COMPROVANTE IMAGEM] Baixado para análise da IA!");
+                } catch (errImg) {
+                    console.error("Erro ao baixar imagem de comprovante:", errImg.message);
+                }
+            }
+            // Se for um comprovante (Imagem ou PDF), processa direto via IA
+            if (ehImagem || ehPDF) {
+                const promptComprovante = `
+                Você é o assistente financeiro FinancIA.
+                Analise o comprovante enviado (Pix, transferência ou pagamento).
+                
+                ${textoExtraidoPDF ? `Texto extraído do PDF:\n"${textoExtraidoPDF}"` : ''}
+                Legenda/Texto enviada pelo usuário: "${textoMensagem}".
+
+                Sua missão:
+                1. Identifique o VALOR do pagamento/transferência.
+                2. Identifique a DESCRIÇÃO ou destinatário (ex: Pão, Almoço, Posto, Nome da pessoa/empresa se não houver legenda). Se o usuário mandou legenda, use a legenda como prioridade de descrição.
+                3. Identifique se é "entrada" (recebeu Pix) ou "saida" (paguei/enviei Pix).
+
+                Responda EXATAMENTE e APENAS um JSON no seguinte formato (sem formatação markdown):
+                {"eGasto": true, "descricao": "Almoço", "valor": 25.00, "tipo": "saida"}
+                `;
+
+                try {
+                    let respostaIA;
+                    if (ehImagem && imagemBase64) {
+                        respostaIA = await chamarComRetry(promptComprovante, imagemBase64); // Suporte à Visão no Gemini
+                    } else {
+                        respostaIA = await chamarComRetry(promptComprovante);
+                    }
+
+                    if (respostaIA && respostaIA.text) {
+                        let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
+                        const inicio = jsonLimpo.indexOf('{');
+                        const fim = jsonLimpo.lastIndexOf('}');
+                        if (inicio !== -1 && fim !== -1) jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
+                        const resComp = JSON.parse(jsonLimpo);
+
+                        if (resComp.eGasto) {
+                            const agora = new Date();
+                            const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
+                            const diaW = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
+                            const mesW = String(agoraBrasilia.getUTCMonth() + 1).padStart(2, '0');
+                            const anoW = agoraBrasilia.getUTCFullYear();
+                            const dataSimples = `${diaW}/${mesW}/${anoW}`;
+
+                            const valorNum = parseFloat(resComp.valor);
+
+                            if (resComp.tipo === 'entrada') {
+                                await pool.query(
+                                    `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
+                                    [usuarioId, resComp.descricao, valorNum, dataSimples]
+                                );
+
+                                await sock.sendMessage(remetenteRaw, {
+                                    text: `✅ *Comprovante de Entrada Registrado!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resComp.descricao}`
+                                });
+                            } else {
+                                const descNorm = resComp.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                                let cat = 'Compras';
+
+                                if (
+                                    descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
+                                    descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
+                                    descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') ||
+                                    descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') ||
+                                    descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
+                                ) {
+                                    cat = 'Transporte';
+                                } else if (
+                                    descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') ||
+                                    descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') ||
+                                    descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar') ||
+                                    descNorm.includes('almoco') || descNorm.includes('almoço')
+                                ) {
+                                    cat = 'Lazer';
+                                } else if (
+                                    descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') ||
+                                    descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('pao') || descNorm.includes('pão') ||
+                                    descNorm.includes('feira') || descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
+                                ) {
+                                    cat = 'Mercado';
+                                } else if (
+                                    descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') ||
+                                    descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') ||
+                                    descNorm.includes('condominio') || descNorm.includes('acessorios')
+                                ) {
+                                    cat = 'Casa';
+                                }
+
+                                await pool.query(
+                                    `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
+                                    [usuarioId, resComp.descricao, valorNum, cat, dataSimples]
+                                );
+
+                                await sock.sendMessage(remetenteRaw, {
+                                    text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resComp.descricao}`
+                                });
+                            }
+                            return; // Finaliza o fluxo do comprovante
+                        }
+                    }
+                } catch (errCompIA) {
+                    console.error("Erro na análise do comprovante via IA:", errCompIA.message);
+                }
+            }
+
+            if (!textoMensagem) return;
 
             const textoMinusculo = textoMensagem.toLowerCase();
 
@@ -787,7 +928,7 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
                 if (matchVal) {
                     const valorReais = parseFloat(matchVal[0].replace(',', '.'));
-                    const cotacaoBtc = await obterCotacaoAtual('BTC', 'Cripto');
+                    const cotacaoBtc = await obtainingCotacaoAtual('BTC', 'Cripto');
                     const fracaoBtc = valorReais / cotacaoBtc;
 
                     const multiplier = isVenda ? -1 : 1;
@@ -866,28 +1007,29 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                     let cat = 'Compras';
 
                     if (
-                        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') || 
-                        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') || 
-                        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') || 
-                        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') || 
+                        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
+                        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
+                        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') ||
+                        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') ||
                         descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
                     ) {
                         cat = 'Transporte';
                     } else if (
-                        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') || 
-                        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') || 
-                        descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar')
+                        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') ||
+                        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') ||
+                        descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar') ||
+                        descNorm.includes('almoco') || descNorm.includes('almoço')
                     ) {
                         cat = 'Lazer';
                     } else if (
-                        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') || 
-                        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('feira') || 
-                        descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
+                        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') ||
+                        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('pao') || descNorm.includes('pão') ||
+                        descNorm.includes('feira') || descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
                     ) {
                         cat = 'Mercado';
                     } else if (
-                        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || 
-                        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') || 
+                        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') ||
+                        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') ||
                         descNorm.includes('condominio') || descNorm.includes('acessorios')
                     ) {
                         cat = 'Casa';
