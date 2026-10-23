@@ -631,11 +631,18 @@ async function iniciarBotUsuario(usuarioId) {
                     targetGroupId = resGrupo.id;
                     console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
 
+                    // Pausa de 3 segundos para o WhatsApp liberar permissoes de Admin no grupo
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+
                     const caminhoFoto = path.join(__dirname, 'icon.png');
                     if (fs.existsSync(caminhoFoto)) {
-                        const bufferFoto = fs.readFileSync(caminhoFoto);
-                        await sock.updateProfilePicture(targetGroupId, bufferFoto);
-                        console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
+                        try {
+                            const bufferFoto = fs.readFileSync(caminhoFoto);
+                            await sock.updateProfilePicture(targetGroupId, bufferFoto);
+                            console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
+                        } catch (errFoto) {
+                            console.error(`⚠️ Erro ao definir foto do grupo:`, errFoto.message);
+                        }
                     }
 
                     const mensagemBoasVindas =
@@ -664,11 +671,16 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
 🚀 *Dica:* Você também pode enviar comprovantes em foto ou áudios que nossa IA irá interpretar para você!`;
 
-                    await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
+                    try {
+                        await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
+                        console.log(`📩 Mensagem de boas-vindas enviada com sucesso!`);
+                    } catch (errMsg) {
+                        console.error(`⚠️ Erro ao enviar mensagem de boas-vindas:`, errMsg.message);
+                    }
                 }
 
                 sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
-                console.log(`✅ [WHATSAPP] ID do Grupo Oficial travado na sessão: ${targetGroupId}`);
+                console.log(`✅ [WHATSAPP] ID do Grupo Oficial vinculado à sessão: ${targetGroupId}`);
 
             } catch (errGrupo) {
                 console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
@@ -681,15 +693,15 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             const msg = m.messages[0];
             if (!msg || !msg.message) return;
 
-            // Trava de loop essencial: Ignora apenas mensagens enviadas pelo próprio bot
+            // Ignora apenas mensagens enviadas pelo próprio robô para evitar loop
             if (msg.key.fromMe) return;
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // Processa apenas mensagens vindas de grupos (@g.us) e rejeita chats privados
+            // Processa apenas mensagens de grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            console.log(`📩 Mensagem recebida e processada do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            console.log(`📩 Mensagem recebida do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -698,19 +710,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 msg.message.documentMessage?.caption ||
                 ''
             ).trim();
-
-            if (msg.key.fromMe && (
-                textoChecagem.includes('Aporte na Reserva Registrado') ||
-                textoChecagem.includes('de FII Registrada') ||
-                textoChecagem.includes('de Ação Registrada') ||
-                textoChecagem.includes('de Cripto Registrada') ||
-                textoChecagem.includes('Entrada registrada no FinancIA') ||
-                textoChecagem.includes('Gasto registrado no FinancIA') ||
-                textoChecagem.includes('Comprovante Registrado') ||
-                textoChecagem.includes('Comprovante de Entrada Registrado')
-            )) {
-                return;
-            }
 
             const ehImagem = !!msg.message.imageMessage;
             const ehDocumento = !!msg.message.documentMessage;
@@ -810,6 +809,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                                     `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
                                     [usuarioId, resComp.descricao, valorNum, dataSimples]
                                 );
+
                                 await sock.sendMessage(remetenteRaw, {
                                     text: `✅ *Comprovante de Entrada Registrado!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
@@ -820,44 +820,39 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                                 if (
                                     descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
                                     descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
-                                    descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') ||
-                                    descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') ||
-                                    descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
+                                    descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao')
                                 ) {
                                     cat = 'Transporte';
                                 } else if (
                                     descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') ||
-                                    descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') ||
-                                    descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar') ||
-                                    descNorm.includes('almoco') || descNorm.includes('almoço')
+                                    descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('jantar') || descNorm.includes('bar')
                                 ) {
                                     cat = 'Lazer';
                                 } else if (
-                                    descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') ||
-                                    descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('pao') || descNorm.includes('pão') ||
-                                    descNorm.includes('feira') || descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
+                                    descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('padaria') || descNorm.includes('feira')
                                 ) {
                                     cat = 'Mercado';
                                 } else if (
-                                    descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') ||
-                                    descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') ||
-                                    descNorm.includes('condominio') || descNorm.includes('acessorios')
+                                    descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || descNorm.includes('aluguel')
                                 ) {
                                     cat = 'Casa';
                                 }
 
                                 await pool.query(
                                     `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                                    [usuarioId, resComp.descricao, valorNum, resComp.categoria || 'Compras', dataSimples]
+                                    [usuarioId, resComp.descricao, valorNum, cat, dataSimples]
                                 );
+
                                 await sock.sendMessage(remetenteRaw, {
-                                    text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${resComp.categoria || 'Compras'}\n📝 *Descrição:* ${resComp.descricao}`
+                                    text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
                             }
                             return;
                         }
                     }
-                } catch (errCompIA) {}
+                } catch (errCompIA) {
+                    console.error("Erro na análise do comprovante via IA:", errCompIA.message);
+                }
             }
 
             if (!textoMensagem) return;
@@ -915,21 +910,24 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
                 const matchTicker = textoMensagem.match(/\b([a-zA-Z]{4}\d{1,2})\b/);
+
                 const ticker = matchTicker ? matchTicker[1].toUpperCase() : 'PETR4';
                 const cotacao = await obterCotacaoAtual(ticker, 'Ações');
                 let cotas = matchCotas ? parseFloat(matchCotas[1]) : 1;
                 let valorTotal = cotas * cotacao;
+
                 const multiplier = isVenda ? -1 : 1;
 
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                     [usuarioId, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
                 await sock.sendMessage(remetenteRaw, {
-                    text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}`
+                    text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
                 });
                 return;
             }
 
+            // 4. CRIPTO
             if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
@@ -950,6 +948,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 }
             }
 
+            // 5. PROCESSAMENTO DE GASTOS E ENTRADAS POR TEXTO
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
             const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g) || textoMinusculo.includes(g));
             if (!temGatilho) return;
@@ -1042,11 +1041,11 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [usuarioId, resultado.descricao, valorNum, 'Compras', dataSimples]
+                        [usuarioId, resultado.descricao, valorNum, cat, dataSimples]
                     );
 
                     await sock.sendMessage(remetenteRaw, {
-                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
+                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 }
             }
@@ -1055,7 +1054,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
         }
     });
 }
-
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     try {
         const usuarioId = req.usuario?.id || 1;
