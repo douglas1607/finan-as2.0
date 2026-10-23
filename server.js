@@ -681,28 +681,15 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             const msg = m.messages[0];
             if (!msg || !msg.message) return;
 
+            // Trava de loop essencial: Ignora apenas mensagens enviadas pelo próprio bot
             if (msg.key.fromMe) return;
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // 1. Ignora se não for uma mensagem de grupo (@g.us)
+            // Processa apenas mensagens vindas de grupos (@g.us) e rejeita chats privados
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            // 2. TRAVA DE SEGURANÇA RIGOROSA: 
-            // Compara com o grupo oficial salvo na sessão. Se houver um grupo salvo 
-            // e a mensagem vier de QUALQUER outro grupo (como o grupo de ofertas acima), 
-            // o bot encerra a execução imediatamente e ignora a mensagem.
-            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
-            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
-                return; 
-            }
-
-            // Se ainda não houver grupo salvo, define este primeiro como o oficial
-            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
-                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
-            }
-
-            console.log(`📩 Mensagem processada do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            console.log(`📩 Mensagem recebida e processada do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -823,7 +810,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                                     `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
                                     [usuarioId, resComp.descricao, valorNum, dataSimples]
                                 );
-
                                 await sock.sendMessage(remetenteRaw, {
                                     text: `✅ *Comprovante de Entrada Registrado!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
@@ -862,19 +848,16 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 
                                 await pool.query(
                                     `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                                    [usuarioId, resComp.descricao, valorNum, cat, dataSimples]
+                                    [usuarioId, resComp.descricao, valorNum, resComp.categoria || 'Compras', dataSimples]
                                 );
-
                                 await sock.sendMessage(remetenteRaw, {
-                                    text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resComp.descricao}`
+                                    text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${resComp.categoria || 'Compras'}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
                             }
                             return;
                         }
                     }
-                } catch (errCompIA) {
-                    console.error("Erro na análise do comprovante via IA:", errCompIA.message);
-                }
+                } catch (errCompIA) {}
             }
 
             if (!textoMensagem) return;
@@ -932,19 +915,17 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
                 const matchTicker = textoMensagem.match(/\b([a-zA-Z]{4}\d{1,2})\b/);
-
                 const ticker = matchTicker ? matchTicker[1].toUpperCase() : 'PETR4';
                 const cotacao = await obterCotacaoAtual(ticker, 'Ações');
                 let cotas = matchCotas ? parseFloat(matchCotas[1]) : 1;
                 let valorTotal = cotas * cotacao;
-
                 const multiplier = isVenda ? -1 : 1;
 
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                     [usuarioId, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
                 await sock.sendMessage(remetenteRaw, {
-                    text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
+                    text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}`
                 });
                 return;
             }
@@ -983,7 +964,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
             Mensagem: "${textoLimpo}"
             Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
-            {"eGasto": true, "descricao": "Venda", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
+            {"eGasto": true, "descricao": "Gasto", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
             `;
 
             let resultado = { eGasto: false };
@@ -1061,19 +1042,17 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [usuarioId, resultado.descricao, valorNum, cat, dataSimples]
+                        [usuarioId, resultado.descricao, valorNum, 'Compras', dataSimples]
                     );
 
                     await sock.sendMessage(remetenteRaw, {
-                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
+                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 }
             }
         } catch (err) {
             console.error("Erro no processamento do WhatsApp:", err.message);
         }
-
-    
     });
 }
 
