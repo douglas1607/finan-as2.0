@@ -564,11 +564,6 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir ativo." }); }
 });
 
-// ==========================================================
-// GESTÃO MULTI-SESSÃO WHATSAPP POR USUÁRIO (BAILEYS ISOLADO)
-// ==========================================================
-const sessoesWhatsApp = {};
-
 async function iniciarBotUsuario(usuarioId) {
     if (sessoesWhatsApp[usuarioId]?.sock && sessoesWhatsApp[usuarioId]?.status === 'conectado') {
         return;
@@ -612,7 +607,6 @@ async function iniciarBotUsuario(usuarioId) {
             sessoesWhatsApp[usuarioId].qr = '';
             console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
 
-           // 1. VERIFICA SE O GRUPO JÁ EXISTE OU CRIA UM NOVO
             setTimeout(async () => {
                 try {
                     const todosGrupos = await sock.groupFetchAllParticipating();
@@ -625,17 +619,14 @@ async function iniciarBotUsuario(usuarioId) {
                         targetGroupId = grupoExistente.id;
                         console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
                     } else if (gruposArray.length > 0) {
-                        // 🛡️ SEGURANÇA: Se o nome exato oscilou, assume o primeiro grupo ativo para evitar desalinhamento de ID
                         targetGroupId = gruposArray[0].id;
                         console.log(`⚠️ [WHATSAPP] Grupo exato não achado por nome. Assumindo o grupo ativo atual: ${targetGroupId}`);
                     } else {
-                        // Cria o grupo e adiciona a si mesmo
                         const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                         const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
                         targetGroupId = resGrupo.id;
                         console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
 
-                        // Define a foto
                         const caminhoFoto = path.join(__dirname, 'icon.png');
                         if (fs.existsSync(caminhoFoto)) {
                             const bufferFoto = fs.readFileSync(caminhoFoto);
@@ -643,7 +634,6 @@ async function iniciarBotUsuario(usuarioId) {
                             console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
                         }
 
-                        // Mensagem de Boas-vindas
                         const mensagemBoasVindas =
                             `👋 *Bem-vindo ao FinancIA Autônoma!*
 
@@ -673,7 +663,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                         await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
                     }
 
-                    // Salva o ID do Grupo para Trava de Segurança
                     sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
                     console.log(`✅ [WHATSAPP] ID do Grupo Oficial travado na sessão: ${targetGroupId}`);
 
@@ -684,35 +673,27 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
         }
     });
 
-
     sock.ev.on('messages.upsert', async (m) => {
-    try {
-        const msg = m.messages[0];
-        if (!msg || !msg.message) return;
+        try {
+            const msg = m.messages[0];
+            if (!msg || !msg.message) return;
 
-        // 🛑 Trava Anti-Loop Absoluta (Ignora o próprio bot)
-        if (msg.key.fromMe) return;
+            if (msg.key.fromMe) return;
 
-        const remetenteRaw = msg.key.remoteJid;
+            const remetenteRaw = msg.key.remoteJid;
 
-        // 🛑 Verifica se a mensagem veio de um GRUPO
-        if (!remetenteRaw.endsWith('@g.us')) {
-            console.log(`⚠️ Mensagem ignorada: recebida fora de um grupo (${remetenteRaw})`);
-            return;
-        }
+            if (!remetenteRaw.endsWith('@g.us')) {
+                console.log(`⚠️ Mensagem ignorada: recebida fora de um grupo (${remetenteRaw})`);
+                return;
+            }
 
-        // 🔄 SINCRONIZAÇÃO AUTOMÁTICA DE GRUPO:
-        // Atualiza o ID do grupo oficial para o ID atual onde você está falando!
-        if (sessoesWhatsApp[usuarioId]) {
-            sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
-        }
+            // Sincronização dinâmica automática do ID do grupo ativo
+            if (sessoesWhatsApp[usuarioId]) {
+                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
+            }
 
-        // >>> AQUI CONTINUA EXATAMENTE O SEU CÓDIGO ORIGINAL ABAIXO...
+            console.log(`📩 Mensagem processada do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
-        // Restante do seu código (processamento de gatilhos, IA, etc.)
-            // Restante da sua lógica de extração de texto e comandos...
-
-            // 🛑 TRAVA ANTI-LOOP INTELIGENTE: Ignora mensagens de texto enviadas pelo próprio bot
             const textoChecagem = (
                 msg.message.conversation ||
                 msg.message.extendedTextMessage?.text ||
@@ -734,9 +715,7 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 return;
             }
 
-            // ==========================================
             // DETECÇÃO DE MÍDIA (IMAGENS E PDFS)
-            // ==========================================
             const ehImagem = !!msg.message.imageMessage;
             const ehDocumento = !!msg.message.documentMessage;
             const mimeTypeDoc = msg.message.documentMessage?.mimetype || '';
@@ -746,15 +725,13 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             let imagemBase64 = null;
             let textoExtraidoPDF = '';
 
-
-            // 1. Processa Comprovante em PDF
             if (ehPDF) {
                 try {
                     const bufferPDF = await downloadMediaMessage(msg, 'buffer', {});
                     textoExtraidoPDF = await new Promise((resolve) => {
                         const pdfParser = new PDFParser(null, 1);
-                        pdfParser.on("pdfParser_dataError", errData => resolve(""));
-                        pdfParser.on("pdfParser_dataReady", pdfData => {
+                        pdfParser.on("pdfParser_dataError", () => resolve(""));
+                        pdfParser.on("pdfParser_dataReady", () => {
                             resolve(pdfParser.getRawTextContent());
                         });
                         pdfParser.parseBuffer(bufferPDF);
@@ -765,7 +742,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 }
             }
 
-            // 2. Processa Comprovante em Imagem
             if (ehImagem) {
                 try {
                     const bufferImagem = await downloadMediaMessage(msg, 'buffer', {});
@@ -775,7 +751,8 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                     console.error("Erro ao baixar imagem de comprovante:", errImg.message);
                 }
             }
-            // Se for um comprovante (Imagem ou PDF), processa direto via IA
+
+            // PROCESSAMENTO DE COMPROVANTES (IMAGEM / PDF)
             if (ehImagem || ehPDF) {
                 const promptComprovante = `
 Você é o motor de inteligência financeira do FinancIA. 
@@ -819,12 +796,9 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 `;
 
                 try {
-                    let respostaIA;
-                    if (ehImagem && imagemBase64) {
-                        respostaIA = await chamarComRetry(promptComprovante, imagemBase64); // Suporte à Visão no Gemini
-                    } else {
-                        respostaIA = await chamarComRetry(promptComprovante);
-                    }
+                    let respostaIA = ehImagem && imagemBase64 ? 
+                        await chamarComRetry(promptComprovante, imagemBase64) : 
+                        await chamarComRetry(promptComprovante);
 
                     if (respostaIA && respostaIA.text) {
                         let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -834,13 +808,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                         const resComp = JSON.parse(jsonLimpo);
 
                         if (resComp.eGasto) {
-                            const agora = new Date();
-                            const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
-                            const diaW = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
-                            const mesW = String(agoraBrasilia.getUTCMonth() + 1).padStart(2, '0');
-                            const anoW = agoraBrasilia.getUTCFullYear();
-                            const dataSimples = `${diaW}/${mesW}/${anoW}`;
-
+                            const dataSimples = new Date().toLocaleDateString('pt-BR');
                             const valorNum = parseFloat(resComp.valor);
 
                             if (resComp.tipo === 'entrada') {
@@ -853,6 +821,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                                     text: `✅ *Comprovante de Entrada Registrado!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
                             } else {
+                                // REGRAS DE CATEGORIZAÇÃO POR PALAVRAS-CHAVE RESTAURADAS
                                 const descNorm = resComp.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                                 let cat = 'Compras';
 
@@ -894,7 +863,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                                     text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
                             }
-                            return; // Finaliza o fluxo do comprovante
+                            return;
                         }
                     }
                 } catch (errCompIA) {
@@ -905,17 +874,8 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
             if (!textoMensagem) return;
 
             const textoMinusculo = textoMensagem.toLowerCase();
-
-            const agora = new Date();
-            const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
-            const diaW = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
-            const mesW = String(agoraBrasilia.getUTCMonth() + 1).padStart(2, '0');
-            const anoW = agoraBrasilia.getUTCFullYear();
-            const horasW = String(agoraBrasilia.getUTCHours()).padStart(2, '0');
-            const minutosW = String(agoraBrasilia.getUTCMinutes()).padStart(2, '0');
-
-            const dataSimples = `${diaW}/${mesW}/${anoW}`;
-            const dataHoraCompleta = `${dataSimples} às ${horasW}:${minutosW}`;
+            const dataSimples = new Date().toLocaleDateString('pt-BR');
+            const dataHoraCompleta = `${dataSimples} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 
             // 1. RESERVA DE EMERGÊNCIA
             if (textoMinusculo.includes('reserva') || textoMinusculo.includes('aporte')) {
@@ -981,13 +941,13 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 return;
             }
 
-            // 4. CRIPTO
+            // 4. CRIPTO (Corrigida a chamada da função para obterCotacaoAtual)
             if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
                 if (matchVal) {
                     const valorReais = parseFloat(matchVal[0].replace(',', '.'));
-                    const cotacaoBtc = await obtainingCotacaoAtual('BTC', 'Cripto');
+                    const cotacaoBtc = await obterCotacaoAtual('BTC', 'Cripto');
                     const fracaoBtc = valorReais / cotacaoBtc;
 
                     const multiplier = isVenda ? -1 : 1;
@@ -1062,6 +1022,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                         text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 } else {
+                    // REGRAS DE CATEGORIZAÇÃO POR PALAVRAS-CHAVE RESTAURADAS
                     const descNorm = resultado.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     let cat = 'Compras';
 
@@ -1109,7 +1070,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
         }
     });
 }
-
 
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     const usuarioId = req.usuario.id;
