@@ -114,46 +114,40 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Modelos oficiais suportados pelo novo SDK do Gemini
-const MODELOS_DISPONIVEIS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash'
-];
+
+// Alias universal do Google AI Studio (aponta sempre para o modelo Flash ativo)
+const MODELO_PADRAO = 'gemini-flash';
 
 async function chamarComRetry(prompt, imagemBase64 = null) {
-    let ultimoErro = null;
+    try {
+        let parts = [{ text: prompt }];
 
-    for (const modelo of MODELOS_DISPONIVEIS) {
-        for (let tentativa = 1; tentativa <= 2; tentativa++) {
-            try {
-                // Estrutura de 'parts' exigida pelo novo SDK (@google/genai)
-                let parts = [{ text: prompt }];
-
-                if (imagemBase64) {
-                    parts.push({
-                        inlineData: {
-                            mimeType: "image/jpeg",
-                            data: imagemBase64
-                        }
-                    });
+        if (imagemBase64) {
+            parts.push({
+                inlineData: {
+                    mimeType: "image/jpeg",
+                    data: imagemBase64
                 }
-
-                const response = await ai.models.generateContent({
-                    model: modelo,
-                    contents: [{ parts: parts }] // Ajustado para o padrão exato do SDK novo
-                });
-
-                if (response && response.text) {
-                    return response;
-                }
-            } catch (err) {
-                ultimoErro = err;
-                console.log(`⚠️ Falha no modelo ${modelo} (tentativa ${tentativa}):`, err.message);
-            }
+            });
         }
+
+        // Chamada limpa do SDK @google/genai
+        const response = await ai.models.generateContent({
+            model: MODELO_PADRAO,
+            contents: [{ parts: parts }]
+        });
+
+        if (response && response.text) {
+            return response;
+        }
+    } catch (err) {
+        console.error("❌ Erro definitivo na chamada do Gemini:", err.message);
+        throw err;
     }
-    throw ultimoErro;
+
 }
+
+
 
 function autenticarToken(req, res, next) {
     const authHeader = req.headers['authorization'];
