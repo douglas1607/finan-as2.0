@@ -626,7 +626,6 @@ async function iniciarBotUsuario(usuarioId) {
                     targetGroupId = grupoExistente.id;
                     console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
                 } else {
-                    // Se não encontrou o grupo exato pelo nome, CRIA um novo grupo do zero!
                     const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                     const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
                     targetGroupId = resGrupo.id;
@@ -686,18 +685,18 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // Ignora se não for grupo
+            // Ignora se não for grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            // TRAVA ESTRITA: Processa APENAS se for o grupo oficial cadastrado na sessão (ignora grupos de ofertas e outros)
+            // Se a sessão ainda não tiver o grupoId salvo, define o primeiro grupo que mandar mensagem como o oficial
+            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
+                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
+            }
+
+            // Trava flexível: se já houver um grupo salvo, garante que apenas ele processe
             const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
             if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
                 return; 
-            }
-
-            // Se ainda não tinha grupo travado, define este como o oficial da sessão
-            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
-                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
             }
 
             console.log(`📩 Mensagem processada do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
@@ -968,15 +967,13 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
             }
 
             const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
-            const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g));
+            const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g) || textoMinusculo.includes(g));
             if (!temGatilho) return;
 
-            const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.startsWith(g));
+            const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.includes(g));
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
-                if (textoLimpo.toLowerCase().startsWith(g)) {
-                    textoLimpo = textoLimpo.slice(g.length).trim();
-                }
+                textoLimpo = textoLimpo.replace(new RegExp(g, 'gi'), '').trim();
             });
 
             const promptIA = `
