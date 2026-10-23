@@ -114,11 +114,10 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Modelos oficiais suportados pelo SDK atual do Gemini
+// Modelos oficiais suportados pelo novo SDK do Gemini
 const MODELOS_DISPONIVEIS = [
-   
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash'
 ];
 
 async function chamarComRetry(prompt, imagemBase64 = null) {
@@ -127,7 +126,7 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
     for (const modelo of MODELOS_DISPONIVEIS) {
         for (let tentativa = 1; tentativa <= 2; tentativa++) {
             try {
-                // Estrutura o conteúdo (Texto + Imagem se existir)
+                // Estrutura de 'parts' exigida pelo novo SDK (@google/genai)
                 let parts = [{ text: prompt }];
 
                 if (imagemBase64) {
@@ -141,7 +140,7 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
 
                 const response = await ai.models.generateContent({
                     model: modelo,
-                    contents: parts
+                    contents: [{ parts: parts }] // Ajustado para o padrão exato do SDK novo
                 });
 
                 if (response && response.text) {
@@ -705,9 +704,9 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             ).trim();
 
             if (msg.key.fromMe && (
-                textoChecagem.includes('Aporte na Reserva Registrado') || 
-                textoChecagem.includes('de FII Registrada') || 
-                textoChecagem.includes('de Ação Registrada') || 
+                textoChecagem.includes('Aporte na Reserva Registrado') ||
+                textoChecagem.includes('de FII Registrada') ||
+                textoChecagem.includes('de Ação Registrada') ||
                 textoChecagem.includes('de Cripto Registrada') ||
                 textoChecagem.includes('Entrada registrada no FinancIA') ||
                 textoChecagem.includes('Gasto registrado no FinancIA') ||
@@ -729,7 +728,7 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             let imagemBase64 = null;
             let textoExtraidoPDF = '';
 
-            
+
             // 1. Processa Comprovante em PDF
             if (ehPDF) {
                 try {
@@ -761,20 +760,45 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             // Se for um comprovante (Imagem ou PDF), processa direto via IA
             if (ehImagem || ehPDF) {
                 const promptComprovante = `
-                Você é o assistente financeiro FinancIA.
-                Analise o comprovante enviado (Pix, transferência ou pagamento).
-                
-                ${textoExtraidoPDF ? `Texto extraído do PDF:\n"${textoExtraidoPDF}"` : ''}
-                Legenda/Texto enviada pelo usuário: "${textoMensagem}".
+Você é o motor de inteligência financeira do FinancIA. 
+Sua tarefa é analisar este comprovante (Pix, transferência ou cartão) e extrair os dados com MÁXIMA PRECISÃO.
 
-                Sua missão:
-                1. Identifique o VALOR do pagamento/transferência.
-                2. Identifique a DESCRIÇÃO ou destinatário (ex: Pão, Almoço, Posto, Nome da pessoa/empresa se não houver legenda). Se o usuário mandou legenda, use a legenda como prioridade de descrição.
-                3. Identifique se é "entrada" (recebeu Pix) ou "saida" (paguei/enviei Pix).
+[DADOS DE ENTRADA]
+${textoExtraidoPDF ? `Texto do PDF:\n"${textoExtraidoPDF}"` : ''}
+Legenda/Texto enviado pelo usuário: "${textoMensagem}"
 
-                Responda EXATAMENTE e APENAS um JSON no seguinte formato (sem formatação markdown):
-                {"eGasto": true, "descricao": "Almoço", "valor": 25.00, "tipo": "saida"}
-                `;
+[HIERARQUIA DE REGRAS DE CATEGORIZAÇÃO E DESCRIÇÃO]
+
+1. REGRA SUPREMA - COM LEGENDA DO USUÁRIO:
+   - Se o usuário digitou algum texto na legenda (ex: "jantar", "mercado", "gasolina"):
+     * A CATEGORIA DEVE ser definida estritamente com base na legenda (ex: "jantar" -> "Lazer" ou "Alimentação"; "mercado" -> "Mercado").
+     * A DESCRIÇÃO pode combinar o nome do recebedor/estabelecimento com a intenção do usuário (ex: "Pix enviado para Fulano de Tal (jantar)" ou apenas "Jantar").
+
+2. REGRA SECUNDÁRIA - SEM LEGENDA DO USUÁRIO (ANÁLISE DE CNPJ / ESTABELECIMENTO):
+   - Se o usuário NÃO enviou nenhuma legenda (ou apenas enviou o arquivo):
+     * Analise o nome da empresa, razão social ou nome do recebedor presente no comprovante.
+     * DEDUSA a categoria automaticamente:
+       - Nomes contendo "Supermercado", "Mercado", "Atacadista", "Moranguinho" -> Categoria: "Mercado".
+       - Nomes contendo "Açaí", "Restaurante", "Pizzaria", "Hamburgueria", "Bar" -> Categoria: "Lazer" ou "Alimentação".
+       - Nomes contendo "Posto", "Combustíveis", "Auto Posto" -> Categoria: "Transporte".
+       - Nomes contendo "Farmácia", "Drogaria" -> Categoria: "Saúde".
+       - Pix para Pessoa Física sem legenda -> Categoria: "Outros" ou "Transferências".
+     * A DESCRIÇÃO DEVE ser o nome exato do recebedor/estabelecimento (ex: "Supermercado Moranguinho").
+
+3. EXTRAÇÃO DE VALOR E TIPO:
+   - VALOR: Extraia o valor numérico exato em formato decimal (ex: 650.00 ou 60.00).
+   - TIPO: "saida" para pagamentos/Pix enviados ou "entrada" para Pix/transferências recebidas.
+
+[FORMATO DA RESPOSTA]
+Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, sem \`\`\`json):
+{
+  "eGasto": true,
+  "descricao": "Nome do Estabelecimento ou Descrição baseada no Usuário",
+  "valor": 0.00,
+  "tipo": "saida",
+  "categoria": "Nome da Categoria"
+}
+`;
 
                 try {
                     let respostaIA;
