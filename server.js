@@ -574,7 +574,7 @@ async function iniciarBotUsuario(usuarioId) {
         return;
     }
 
-    const pastaAuth = path.join(__dirname, `auth_info_usuario_${usuarioId}`);
+    const pastaAuth = path.join(__dirname, `auth_info`);
     const { state, saveCreds } = await useMultiFileAuthState(pastaAuth);
 
     const sock = makeWASocket({
