@@ -612,17 +612,22 @@ async function iniciarBotUsuario(usuarioId) {
             sessoesWhatsApp[usuarioId].qr = '';
             console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
 
-            // 1. VERIFICA SE O GRUPO JÁ EXISTE OU CRIA UM NOVO
+           // 1. VERIFICA SE O GRUPO JÁ EXISTE OU CRIA UM NOVO
             setTimeout(async () => {
                 try {
                     const todosGrupos = await sock.groupFetchAllParticipating();
-                    let grupoExistente = Object.values(todosGrupos).find(g => g.subject === "FinancIA - Gestão Financeira");
+                    let gruposArray = Object.values(todosGrupos);
+                    let grupoExistente = gruposArray.find(g => g.subject === "FinancIA - Gestão Financeira");
 
                     let targetGroupId = null;
 
                     if (grupoExistente) {
                         targetGroupId = grupoExistente.id;
                         console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
+                    } else if (gruposArray.length > 0) {
+                        // 🛡️ SEGURANÇA: Se o nome exato oscilou, assume o primeiro grupo ativo para evitar desalinhamento de ID
+                        targetGroupId = gruposArray[0].id;
+                        console.log(`⚠️ [WHATSAPP] Grupo exato não achado por nome. Assumindo o grupo ativo atual: ${targetGroupId}`);
                     } else {
                         // Cria o grupo e adiciona a si mesmo
                         const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
@@ -670,6 +675,7 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
                     // Salva o ID do Grupo para Trava de Segurança
                     sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
+                    console.log(`✅ [WHATSAPP] ID do Grupo Oficial travado na sessão: ${targetGroupId}`);
 
                 } catch (errGrupo) {
                     console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
