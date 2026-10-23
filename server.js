@@ -625,10 +625,8 @@ async function iniciarBotUsuario(usuarioId) {
                 if (grupoExistente) {
                     targetGroupId = grupoExistente.id;
                     console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
-                } else if (gruposArray.length > 0) {
-                    targetGroupId = gruposArray[0].id;
-                    console.log(`⚠️ [WHATSAPP] Grupo exato não achado por nome. Assumindo o grupo ativo atual: ${targetGroupId}`);
                 } else {
+                    // Se não encontrou o grupo exato pelo nome, CRIA um novo grupo do zero!
                     const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                     const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
                     targetGroupId = resGrupo.id;
