@@ -35,9 +35,9 @@ app.get('/', (req, res) => {
 
 // Inicialização segura da IA
 // Inicialização segura da IA (Forçando a API v1 estável)
-const ai = new GoogleGenAI({ 
-    apiKey: process.env.GEMINI_API_KEY, 
-    apiVersion: 'v1' 
+const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    apiVersion: 'v1'
 });
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -684,13 +684,18 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             const msg = m.messages[0];
             if (!msg || !msg.message) return;
 
+            // 🛑 1. Trava Absoluta Anti-Loop (Ignora mensagens do próprio bot)
+            if (msg.key.fromMe) return;
+
             const remetenteRaw = msg.key.remoteJid;
 
-            // 🛑 TRAVA SEVERA: IGNORA QUALQUER MENSAGEM QUE NÃO VENHA DO GRUPO OFICIAL DO FINANCIA
+            // 🛑 2. Trava de Grupo Oficial
             const idGrupoOficial = sessoesWhatsApp[usuarioId]?.grupoId;
             if (idGrupoOficial && remetenteRaw !== idGrupoOficial) {
-                return; // Ignora conversas privadas, grupos de terceiros, etc.
+                return; // Ignora conversas privadas, outros grupos, etc.
             }
+
+            // Restante da sua lógica de extração de texto e comandos...
 
             // 🛑 TRAVA ANTI-LOOP INTELIGENTE: Ignora mensagens de texto enviadas pelo próprio bot
             const textoChecagem = (
