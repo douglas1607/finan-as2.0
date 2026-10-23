@@ -701,7 +701,19 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             // Processa apenas mensagens de grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            console.log(`📩 Mensagem recebida do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            // TRAVA INTELIGENTE DE GRUPO OFICIAL:
+            // Impede que o bot processe mensagens vindas de grupos externos ou de ofertas.
+            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
+            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
+                return; 
+            }
+
+            // Se ainda não tiver o ID salvo na sessão, define este primeiro como o oficial
+            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
+                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
+            }
+
+            console.log(`📩 Mensagem recebida do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const textoChecagem = (
                 msg.message.conversation ||
