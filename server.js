@@ -612,35 +612,34 @@ async function iniciarBotUsuario(usuarioId) {
             sessoesWhatsApp[usuarioId].qr = '';
             console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
 
-            setTimeout(async () => {
-                try {
-                    const todosGrupos = await sock.groupFetchAllParticipating();
-                    let gruposArray = Object.values(todosGrupos);
-                    let grupoExistente = gruposArray.find(g => g.subject === "FinancIA - Gestão Financeira");
+            try {
+                const todosGrupos = await sock.groupFetchAllParticipating();
+                let gruposArray = Object.values(todosGrupos);
+                let grupoExistente = gruposArray.find(g => g.subject === "FinancIA - Gestão Financeira");
 
-                    let targetGroupId = null;
+                let targetGroupId = null;
 
-                    if (grupoExistente) {
-                        targetGroupId = grupoExistente.id;
-                        console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
-                    } else if (gruposArray.length > 0) {
-                        targetGroupId = gruposArray[0].id;
-                        console.log(`⚠️ [WHATSAPP] Grupo exato não achado por nome. Assumindo o grupo ativo atual: ${targetGroupId}`);
-                    } else {
-                        const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-                        const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
-                        targetGroupId = resGrupo.id;
-                        console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
+                if (grupoExistente) {
+                    targetGroupId = grupoExistente.id;
+                    console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
+                } else if (gruposArray.length > 0) {
+                    targetGroupId = gruposArray[0].id;
+                    console.log(`⚠️ [WHATSAPP] Grupo exato não achado por nome. Assumindo o grupo ativo atual: ${targetGroupId}`);
+                } else {
+                    const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                    const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
+                    targetGroupId = resGrupo.id;
+                    console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
 
-                        const caminhoFoto = path.join(__dirname, 'icon.png');
-                        if (fs.existsSync(caminhoFoto)) {
-                            const bufferFoto = fs.readFileSync(caminhoFoto);
-                            await sock.updateProfilePicture(targetGroupId, bufferFoto);
-                            console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
-                        }
+                    const caminhoFoto = path.join(__dirname, 'icon.png');
+                    if (fs.existsSync(caminhoFoto)) {
+                        const bufferFoto = fs.readFileSync(caminhoFoto);
+                        await sock.updateProfilePicture(targetGroupId, bufferFoto);
+                        console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
+                    }
 
-                        const mensagemBoasVindas =
-                            `👋 *Bem-vindo ao FinancIA Autônoma!*
+                    const mensagemBoasVindas =
+                        `👋 *Bem-vindo ao FinancIA Autônoma!*
 
 Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos. Todas as mensagens enviadas aqui serão organizadas automaticamente no seu painel!
 
@@ -665,16 +664,16 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
 🚀 *Dica:* Você também pode enviar comprovantes em foto ou áudios que nossa IA irá interpretar para você!`;
 
-                        await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
-                    }
-
-                    sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
-                    console.log(`✅ [WHATSAPP] ID do Grupo Oficial travado na sessão: ${targetGroupId}`);
-
-                } catch (errGrupo) {
-                    console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
+                    await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
                 }
-            }, 2000);
+
+                sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
+                console.log(`✅ [WHATSAPP] ID do Grupo Oficial travado na sessão: ${targetGroupId}`);
+
+            } catch (errGrupo) {
+                console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
+            }
+        
         }
     });
 
@@ -687,11 +686,13 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const remetenteRaw = msg.key.remoteJid;
 
+            // Aceita mensagens de qualquer grupo ou do grupo travado
             if (!remetenteRaw.endsWith('@g.us')) {
                 console.log(`⚠️ Mensagem ignorada: recebida fora de um grupo (${remetenteRaw})`);
                 return;
             }
 
+            // Atualiza dinamicamente o grupo ativo na sessão
             if (sessoesWhatsApp[usuarioId]) {
                 sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
             }
@@ -797,8 +798,8 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 }`;
 
                 try {
-                    let respostaIA = ehImagem && imagemBase64 ? 
-                        await chamarComRetry(promptComprovante, imagemBase64) : 
+                    let respostaIA = ehImagem && imagemBase64 ?
+                        await chamarComRetry(promptComprovante, imagemBase64) :
                         await chamarComRetry(promptComprovante);
 
                     if (respostaIA && respostaIA.text) {
@@ -1023,7 +1024,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                         text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 } else {
-                    // REGRAS DE CATEGORIZAÇÃO POR PALAVRAS-CHAVE RESTAURADAS
                     const descNorm = resultado.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                     let cat = 'Compras';
 
@@ -1080,36 +1080,36 @@ app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
         // Se a sessão não existir ou estiver desconectada, inicia o bot
         if (!sessoesWhatsApp[usuarioId] || sessoesWhatsApp[usuarioId].status === 'desconectado') {
             iniciarBotUsuario(usuarioId);
-            return res.json({ 
-                status: 'aguardando', 
-                mensagem: 'Iniciando gerador de QR Code exclusivo... Tente em 3 segundos.' 
+            return res.json({
+                status: 'aguardando',
+                mensagem: 'Iniciando gerador de QR Code exclusivo... Tente em 3 segundos.'
             });
         }
 
         if (sessoesWhatsApp[usuarioId].status === 'conectado') {
-            return res.json({ 
-                status: 'conectado', 
-                mensagem: 'Seu WhatsApp já está conectado neste perfil!' 
+            return res.json({
+                status: 'conectado',
+                mensagem: 'Seu WhatsApp já está conectado neste perfil!'
             });
         }
 
         if (!sessoesWhatsApp[usuarioId].qr) {
-            return res.json({ 
-                status: 'aguardando', 
-                mensagem: 'Gerando QR Code... Aguarde.' 
+            return res.json({
+                status: 'aguardando',
+                mensagem: 'Gerando QR Code... Aguarde.'
             });
         }
 
-        return res.json({ 
-            status: 'pendente', 
-            qrcode: sessoesWhatsApp[usuarioId].qr 
+        return res.json({
+            status: 'pendente',
+            qrcode: sessoesWhatsApp[usuarioId].qr
         });
 
     } catch (err) {
         console.error("❌ Erro na rota /api/whatsapp/qr-code:", err.message);
-        return res.status(500).json({ 
-            erro: "Erro interno ao gerar QR Code", 
-            detalhes: err.message 
+        return res.status(500).json({
+            erro: "Erro interno ao gerar QR Code",
+            detalhes: err.message
         });
     }
 });
