@@ -685,21 +685,10 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // Ignora se não for grupo (@g.us)
+            // Processa apenas se for mensagem de grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            // Se a sessão ainda não tiver o grupoId salvo, define o primeiro grupo que mandar mensagem como o oficial
-            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
-                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
-            }
-
-            // Trava flexível: se já houver um grupo salvo, garante que apenas ele processe
-            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
-            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
-                return; 
-            }
-
-            console.log(`📩 Mensagem processada do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            console.log(`📩 Mensagem recebida do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -1069,6 +1058,8 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
         } catch (err) {
             console.error("Erro no processamento do WhatsApp:", err.message);
         }
+
+    
     });
 }
 
