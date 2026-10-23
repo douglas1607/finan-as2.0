@@ -684,28 +684,24 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
         const msg = m.messages[0];
         if (!msg || !msg.message) return;
 
-        // 🛑 1. Trava Anti-Loop Absoluta (Ignora TUDO do próprio bot)
+        // 🛑 Trava Anti-Loop Absoluta (Ignora o próprio bot)
         if (msg.key.fromMe) return;
 
         const remetenteRaw = msg.key.remoteJid;
-        
-        // 🔍 LOG DE DIAGNÓSTICO
-        console.log(`📩 Mensagem recebida de [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
-        // 🔄 2. SINCRONIZAÇÃO DINÂMICA DE GRUPO: Pega o grupo atual onde a mensagem chegou
-        let idGrupoOficial = sessoesWhatsApp[usuarioId]?.grupoId;
-
-        if (remetenteRaw.endsWith('@g.us')) {
-            if (!idGrupoOficial || remetenteRaw !== idGrupoOficial) {
-                console.log(`🔄 Sincronizando novo grupo oficial do usuário: ${remetenteRaw}`);
-                if (!sessoesWhatsApp[usuarioId]) sessoesWhatsApp[usuarioId] = {};
-                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
-                idGrupoOficial = remetenteRaw;
-            }
-        } else {
+        // 🛑 Verifica se a mensagem veio de um GRUPO
+        if (!remetenteRaw.endsWith('@g.us')) {
             console.log(`⚠️ Mensagem ignorada: recebida fora de um grupo (${remetenteRaw})`);
             return;
         }
+
+        // 🔄 SINCRONIZAÇÃO AUTOMÁTICA DE GRUPO:
+        // Atualiza o ID do grupo oficial para o ID atual onde você está falando!
+        if (sessoesWhatsApp[usuarioId]) {
+            sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
+        }
+
+        // >>> AQUI CONTINUA EXATAMENTE O SEU CÓDIGO ORIGINAL ABAIXO...
 
         // Restante do seu código (processamento de gatilhos, IA, etc.)
             // Restante da sua lógica de extração de texto e comandos...
