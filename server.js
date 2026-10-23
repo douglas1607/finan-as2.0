@@ -118,7 +118,7 @@ async function inicializarTabelas() {
 inicializarTabelas();
 
 // Alias universal do Google AI Studio (Mantido exatamente como o seu)
-const MODELO_PADRAO = 'gemini-flash';
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 async function chamarComRetry(prompt, imagemBase64 = null) {
     try {
@@ -133,8 +133,7 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
             });
         }
 
-        const response = await ai.models.generateContent({
-            model: MODELO_PADRAO,
+        const response = await model.generateContent({
             contents: [{ parts: parts }]
         });
 
