@@ -615,6 +615,9 @@ async function iniciarBotUsuario(usuarioId) {
             sessoesWhatsApp[usuarioId].qr = '';
             console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
 
+            // Aguarda 2 segundos para o Socket do WhatsApp estabilizar totalmente a conexao
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             try {
                 const todosGrupos = await sock.groupFetchAllParticipating();
                 let gruposArray = Object.values(todosGrupos);
@@ -693,9 +696,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             const msg = m.messages[0];
             if (!msg || !msg.message) return;
 
-            // Ignora apenas mensagens enviadas pelo próprio robô para evitar loop
-            if (msg.key.fromMe) return;
-
             const remetenteRaw = msg.key.remoteJid;
 
             // Processa apenas mensagens de grupo (@g.us)
@@ -722,6 +722,25 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 msg.message.documentMessage?.caption ||
                 ''
             ).trim();
+
+            // TRAVA ANTI-LOOP INTELIGENTE:
+            // Ignora apenas as mensagens automáticas geradas pelo próprio bot para evitar loop infinito,
+            // permitindo que você digite os comandos livremente no seu número.
+            if (msg.key.fromMe && (
+                textoChecagem.includes('Entrada registrada no FinancIA') ||
+                textoChecagem.includes('Gasto registrado no FinancIA') ||
+                textoChecagem.includes('Comprovante Registrado') ||
+                textoChecagem.includes('Comprovante de Entrada Registrado') ||
+                textoChecagem.includes('Aporte na Reserva Registrado') ||
+                textoChecagem.includes('de FII Registrada') ||
+                textoChecagem.includes('de Ação Registrada') ||
+                textoChecagem.includes('de Cripto Registrada') ||
+                textoChecagem.includes('Bem-vindo ao FinancIA')
+            )) {
+                return;
+            }
+
+            console.log(`📩 Mensagem recebida e aceita do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const ehImagem = !!msg.message.imageMessage;
             const ehDocumento = !!msg.message.documentMessage;
@@ -1056,7 +1075,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                         [usuarioId, resultado.descricao, valorNum, cat, dataSimples]
                     );
 
-                    await sock.sendMessage(remetenteRaw, {
+                    await sock.sendMessage(remetNodeRaw = remetenteRaw, {
                         text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 }
@@ -1066,6 +1085,8 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
         }
     });
 }
+
+
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     try {
         const usuarioId = req.usuario?.id || 1;
