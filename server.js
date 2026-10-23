@@ -564,6 +564,11 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir ativo." }); }
 });
 
+// ==========================================
+// DECLARAÇÃO GLOBAL DA SESSÃO DO WHATSAPP
+// ==========================================
+const sessoesWhatsApp = {};
+
 async function iniciarBotUsuario(usuarioId) {
     if (sessoesWhatsApp[usuarioId]?.sock && sessoesWhatsApp[usuarioId]?.status === 'conectado') {
         return;
@@ -687,7 +692,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 return;
             }
 
-            // Sincronização dinâmica automática do ID do grupo ativo
             if (sessoesWhatsApp[usuarioId]) {
                 sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
             }
@@ -715,7 +719,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 return;
             }
 
-            // DETECÇÃO DE MÍDIA (IMAGENS E PDFS)
             const ehImagem = !!msg.message.imageMessage;
             const ehDocumento = !!msg.message.documentMessage;
             const mimeTypeDoc = msg.message.documentMessage?.mimetype || '';
@@ -752,7 +755,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 }
             }
 
-            // PROCESSAMENTO DE COMPROVANTES (IMAGEM / PDF)
             if (ehImagem || ehPDF) {
                 const promptComprovante = `
 Você é o motor de inteligência financeira do FinancIA. 
@@ -792,8 +794,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
   "valor": 0.00,
   "tipo": "saida",
   "categoria": "Nome da Categoria"
-}
-`;
+}`;
 
                 try {
                     let respostaIA = ehImagem && imagemBase64 ? 
@@ -821,7 +822,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                                     text: `✅ *Comprovante de Entrada Registrado!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resComp.descricao}`
                                 });
                             } else {
-                                // REGRAS DE CATEGORIZAÇÃO POR PALAVRAS-CHAVE RESTAURADAS
                                 const descNorm = resComp.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
                                 let cat = 'Compras';
 
@@ -911,6 +911,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 }
 
                 const multiplier = isVenda ? -1 : 1;
+
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                     [usuarioId, 'FIIs', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
@@ -932,6 +933,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 let valorTotal = cotas * cotacao;
 
                 const multiplier = isVenda ? -1 : 1;
+
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                     [usuarioId, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
@@ -941,7 +943,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 return;
             }
 
-            // 4. CRIPTO (Corrigida a chamada da função para obterCotacaoAtual)
             if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
                 const isVenda = textoMinusculo.includes('vendi');
                 const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
@@ -951,6 +952,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                     const fracaoBtc = valorReais / cotacaoBtc;
 
                     const multiplier = isVenda ? -1 : 1;
+
                     await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
                         [usuarioId, 'Cripto', 'BTC', fracaoBtc * multiplier, cotacaoBtc, dataHoraCompleta]);
 
@@ -966,7 +968,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
             if (!temGatilho) return;
 
             const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.startsWith(g));
-
             let textoLimpo = textoMensagem;
             gatilhos.forEach(g => {
                 if (textoLimpo.toLowerCase().startsWith(g)) {
@@ -1112,6 +1113,7 @@ app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
         });
     }
 });
+
 app.listen(PORT, () => {
     console.log(`🚀 FinancIA Autônoma rodando na porta ${PORT}`);
 });
