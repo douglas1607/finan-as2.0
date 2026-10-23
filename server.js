@@ -723,19 +723,21 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 ''
             ).trim();
 
+            const textoMin = textoChecagem.toLowerCase();
+
             // TRAVA ANTI-LOOP INTELIGENTE:
             // Ignora apenas as mensagens automáticas geradas pelo próprio bot para evitar loop infinito,
             // permitindo que você digite os comandos livremente no seu número.
             if (msg.key.fromMe && (
-                textoChecagem.includes('Entrada registrada no FinancIA') ||
-                textoChecagem.includes('Gasto registrado no FinancIA') ||
-                textoChecagem.includes('Comprovante Registrado') ||
-                textoChecagem.includes('Comprovante de Entrada Registrado') ||
-                textoChecagem.includes('Aporte na Reserva Registrado') ||
-                textoChecagem.includes('de FII Registrada') ||
-                textoChecagem.includes('de Ação Registrada') ||
-                textoChecagem.includes('de Cripto Registrada') ||
-                textoChecagem.includes('Bem-vindo ao FinancIA')
+                textoMin.includes('entrada registrada no financia') ||
+                textoMin.includes('gasto registrado no financia') ||
+                textoMin.includes('comprovante registrado') ||
+                textoMin.includes('comprovante de entrada registrado') ||
+                textoMin.includes('aporte na reserva registrado') ||
+                textoMin.includes('de fii registrada') ||
+                textoMin.includes('de ação registrada') ||
+                textoMin.includes('de cripto registrada') ||
+                textoMin.includes('bem-vindo ao financia')
             )) {
                 return;
             }
