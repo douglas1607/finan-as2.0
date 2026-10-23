@@ -1072,24 +1072,46 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 }
 
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
-    const usuarioId = req.usuario.id;
+    try {
+        // Usa o ID do usuário logado ou garante o ID 1 como fallback
+        const usuarioId = req.usuario?.id || 1;
 
-    if (!sessoesWhatsApp[usuarioId] || sessoesWhatsApp[usuarioId].status === 'desconectado') {
-        iniciarBotUsuario(usuarioId);
-        return res.json({ status: 'aguardando', mensagem: 'Iniciando gerador de QR Code exclusivo... Tente em 3 segundos.' });
+        // Se a sessão não existir ou estiver desconectada, inicia o bot
+        if (!sessoesWhatsApp[usuarioId] || sessoesWhatsApp[usuarioId].status === 'desconectado') {
+            iniciarBotUsuario(usuarioId);
+            return res.json({ 
+                status: 'aguardando', 
+                mensagem: 'Iniciando gerador de QR Code exclusivo... Tente em 3 segundos.' 
+            });
+        }
+
+        if (sessoesWhatsApp[usuarioId].status === 'conectado') {
+            return res.json({ 
+                status: 'conectado', 
+                mensagem: 'Seu WhatsApp já está conectado neste perfil!' 
+            });
+        }
+
+        if (!sessoesWhatsApp[usuarioId].qr) {
+            return res.json({ 
+                status: 'aguardando', 
+                mensagem: 'Gerando QR Code... Aguarde.' 
+            });
+        }
+
+        return res.json({ 
+            status: 'pendente', 
+            qrcode: sessoesWhatsApp[usuarioId].qr 
+        });
+
+    } catch (err) {
+        console.error("❌ Erro na rota /api/whatsapp/qr-code:", err.message);
+        return res.status(500).json({ 
+            erro: "Erro interno ao gerar QR Code", 
+            detalhes: err.message 
+        });
     }
-
-    if (sessoesWhatsApp[usuarioId].status === 'conectado') {
-        return res.json({ status: 'conectado', mensagem: 'Seu WhatsApp já está conectado neste perfil!' });
-    }
-
-    if (!sessoesWhatsApp[usuarioId].qr) {
-        return res.json({ status: 'aguardando', mensagem: 'Gerando QR Code... Aguarde.' });
-    }
-
-    res.json({ status: 'pendente', qrcode: sessoesWhatsApp[usuarioId].qr });
 });
-
 app.listen(PORT, () => {
     console.log(`🚀 FinancIA Autônoma rodando na porta ${PORT}`);
 });
