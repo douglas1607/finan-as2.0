@@ -685,10 +685,24 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // Processa apenas se for mensagem de grupo (@g.us)
+            // 1. Ignora se não for uma mensagem de grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            console.log(`📩 Mensagem recebida do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            // 2. TRAVA DE SEGURANÇA RIGOROSA: 
+            // Compara com o grupo oficial salvo na sessão. Se houver um grupo salvo 
+            // e a mensagem vier de QUALQUER outro grupo (como o grupo de ofertas acima), 
+            // o bot encerra a execução imediatamente e ignora a mensagem.
+            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
+            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
+                return; 
+            }
+
+            // Se ainda não houver grupo salvo, define este primeiro como o oficial
+            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
+                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
+            }
+
+            console.log(`📩 Mensagem processada do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const textoChecagem = (
                 msg.message.conversation ||
