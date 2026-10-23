@@ -680,21 +680,25 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
 
     sock.ev.on('messages.upsert', async (m) => {
-        try {
-            const msg = m.messages[0];
-            if (!msg || !msg.message) return;
+    try {
+        const msg = m.messages[0];
+        if (!msg || !msg.message) return;
 
-            // 🛑 1. Trava Absoluta Anti-Loop (Ignora mensagens do próprio bot)
-            if (msg.key.fromMe) return;
+        // 🛑 Trava Anti-Loop Absoluta (Ignora o próprio bot)
+        if (msg.key.fromMe) return;
 
-            const remetenteRaw = msg.key.remoteJid;
+        const remetenteRaw = msg.key.remoteJid;
+        
+        // 🔍 LOG DE DIAGNÓSTICO (Para você ver exatamente no Render o que está chegando)
+        console.log(`📩 Mensagem recebida de [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
-            // 🛑 2. Trava de Grupo Oficial
-            const idGrupoOficial = sessoesWhatsApp[usuarioId]?.grupoId;
-            if (idGrupoOficial && remetenteRaw !== idGrupoOficial) {
-                return; // Ignora conversas privadas, outros grupos, etc.
-            }
+        const idGrupoOficial = sessoesWhatsApp[usuarioId]?.grupoId;
 
+        // Se você quiser testar sem restrição de grupo por alguns minutos, comente as 3 linhas abaixo:
+        if (idGrupoOficial && remetenteRaw !== idGrupoOficial) {
+            console.log(`⚠️ Mensagem ignorada: remetente (${remetenteRaw}) diferente do grupo oficial (${idGrupoOficial})`);
+            return;
+        }
             // Restante da sua lógica de extração de texto e comandos...
 
             // 🛑 TRAVA ANTI-LOOP INTELIGENTE: Ignora mensagens de texto enviadas pelo próprio bot
