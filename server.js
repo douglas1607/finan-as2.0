@@ -117,11 +117,11 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-// Alias universal do Google AI Studio (Mantido exatamente como o seu)
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
 async function chamarComRetry(prompt, imagemBase64 = null) {
     try {
+        // Inicializa o modelo com segurança dentro da função usando a SDK
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
         let parts = [{ text: prompt }];
 
         if (imagemBase64) {
@@ -137,8 +137,11 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
             contents: [{ parts: parts }]
         });
 
-        if (response && response.text) {
-            return response;
+        // Extrai o texto da resposta do formato oficial da SDK da Google
+        const respostaTexto = response.response.text();
+
+        if (respostaTexto) {
+            return { text: respostaTexto };
         }
     } catch (err) {
         console.error("❌ Erro definitivo na chamada do Gemini:", err.message);
