@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { GoogleGenAI } = require('@google/genai');
 const multer = require('multer');
-const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCodeLib = require('qrcode');
 const fs = require('fs');
@@ -587,7 +587,8 @@ async function iniciarBotUsuario(usuarioId) {
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
         markOnlineOnConnect: true,
-        keepAliveIntervalMs: 30000
+        keepAliveIntervalMs: 30000,
+        browser: ['FinancIA Autônoma', 'Chrome', '1.0.0'],
     });
 
     sessoesWhatsApp[usuarioId] = { sock, status: 'iniciando', qr: '', grupoId: null };
