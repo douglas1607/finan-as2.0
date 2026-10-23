@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { GoogleGenAI } = require('@google/genai');
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const multer = require('multer');
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 const pino = require('pino');
