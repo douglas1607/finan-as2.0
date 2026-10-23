@@ -34,7 +34,6 @@ app.get('/', (req, res) => {
 });
 
 // Inicialização segura da IA
-// Inicialização segura da IA (Forçando a API v1 estável)
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
     apiVersion: 'v1'
@@ -118,8 +117,7 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-
-// Alias universal do Google AI Studio (aponta sempre para o modelo Flash ativo)
+// Alias universal do Google AI Studio (Mantido exatamente como o seu)
 const MODELO_PADRAO = 'gemini-flash';
 
 async function chamarComRetry(prompt, imagemBase64 = null) {
@@ -135,7 +133,6 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
             });
         }
 
-        // Chamada limpa do SDK @google/genai
         const response = await ai.models.generateContent({
             model: MODELO_PADRAO,
             contents: [{ parts: parts }]
@@ -148,10 +145,7 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
         console.error("❌ Erro definitivo na chamada do Gemini:", err.message);
         throw err;
     }
-
 }
-
-
 
 function autenticarToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -164,6 +158,17 @@ function autenticarToken(req, res, next) {
         next();
     });
 }
+
+// Rota de Reset Total do Banco de Dados (Adicionada)
+app.get('/api/reset-banco-dados-total', async (req, res) => {
+    try {
+        await pool.query('DROP TABLE IF EXISTS transacoes, entradas, aportes, gastos_fixos, ativos_portfolio, usuarios CASCADE;');
+        await inicializarTabelas();
+        res.json({ mensagem: "✅ Banco de dados PostgreSQL resetado e recriado com sucesso!" });
+    } catch (err) {
+        res.status(500).json({ erro: "Erro ao resetar banco:", detalhes: err.message });
+    }
+});
 
 // Helper otimizado e seguro para obter cotação em tempo real de FIIs, Ações e Cripto
 async function obterCotacaoAtual(ticker, tipo) {
@@ -182,7 +187,7 @@ async function obterCotacaoAtual(ticker, tipo) {
             if (data?.[0]?.last) return parseFloat(data[0].last);
         } catch (e) { }
 
-        return 380000.00; // Fallback real do BTC se a API oscilar
+        return 380000.00;
     }
 
     try {
@@ -266,7 +271,7 @@ app.delete('/api/entradas/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir entrada." }); }
 });
 
-// Rotas de Aportes (Reserva de Emergência)
+// Rotas de Aportes
 app.get('/api/aportes', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM aportes WHERE usuario_id = $1 ORDER BY id ASC`, [req.usuario.id]);
@@ -279,7 +284,6 @@ app.post('/api/aportes', autenticarToken, async (req, res) => {
     const valNum = parseFloat(valor);
     if (!mes || isNaN(valNum) || valNum <= 0) return res.status(400).json({ erro: "Dados inválidos." });
 
-    // Cálculo seguro do horário de Brasília (UTC-3)
     const agora = new Date();
     const agoraBrasilia = new Date(agora.getTime() - (3 * 60 * 60 * 1000));
     const dia = String(agoraBrasilia.getUTCDate()).padStart(2, '0');
@@ -365,7 +369,6 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
-// Rota de Importação de Extratos com IA
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     console.log("📥 [EXTRATO] Processando arquivo enviado...");
     try {
@@ -673,7 +676,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             } catch (errGrupo) {
                 console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
             }
-        
         }
     });
 
@@ -686,18 +688,21 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // Aceita mensagens de qualquer grupo ou do grupo travado
-            if (!remetenteRaw.endsWith('@g.us')) {
-                console.log(`⚠️ Mensagem ignorada: recebida fora de um grupo (${remetenteRaw})`);
-                return;
+            // Ignora se não for grupo
+            if (!remetenteRaw.endsWith('@g.us')) return;
+
+            // TRAVA ESTRITA: Processa APENAS se for o grupo oficial cadastrado na sessão (ignora grupos de ofertas e outros)
+            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
+            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
+                return; 
             }
 
-            // Atualiza dinamicamente o grupo ativo na sessão
-            if (sessoesWhatsApp[usuarioId]) {
+            // Se ainda não tinha grupo travado, define este como o oficial da sessão
+            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
                 sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
             }
 
-            console.log(`📩 Mensagem processada do grupo [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            console.log(`📩 Mensagem processada do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -1074,10 +1079,8 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     try {
-        // Usa o ID do usuário logado ou garante o ID 1 como fallback
         const usuarioId = req.usuario?.id || 1;
 
-        // Se a sessão não existir ou estiver desconectada, inicia o bot
         if (!sessoesWhatsApp[usuarioId] || sessoesWhatsApp[usuarioId].status === 'desconectado') {
             iniciarBotUsuario(usuarioId);
             return res.json({
