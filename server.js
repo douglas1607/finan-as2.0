@@ -34,7 +34,11 @@ app.get('/', (req, res) => {
 });
 
 // Inicialização segura da IA
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Inicialização segura da IA (Forçando a API v1 estável)
+const ai = new GoogleGenAI({ 
+    apiKey: process.env.GEMINI_API_KEY, 
+    apiVersion: 'v1' 
+});
 const upload = multer({ storage: multer.memoryStorage() });
 
 const pool = new Pool({
