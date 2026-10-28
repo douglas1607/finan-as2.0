@@ -67,7 +67,8 @@ async function inicializarTabelas() {
                 id SERIAL PRIMARY KEY,
                 nome VARCHAR(255),
                 email VARCHAR(255) UNIQUE,
-                senha VARCHAR(255)
+                senha VARCHAR(255),
+                grupo_id VARCHAR(255)
             );
             CREATE TABLE IF NOT EXISTS transacoes (
                 id SERIAL PRIMARY KEY,
@@ -109,6 +110,8 @@ async function inicializarTabelas() {
                 data VARCHAR(50)
             );
         `);
+        // Garante que a coluna grupo_id exista mesmo em bancos já criados anteriormente
+        await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS grupo_id VARCHAR(255);`);
         await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
         await pool.query(`ALTER TABLE ativos_portfolio ALTER COLUMN quantidade TYPE NUMERIC(15,8);`);
         console.log("✅ Tabelas PostgreSQL verificadas/criadas com sucesso!");
@@ -162,7 +165,21 @@ function autenticarToken(req, res, next) {
     });
 }
 
-// Rota de Reset Total do Banco de Dados (Adicionada)
+// Rota de Suporte Admin para inspecionar cadastros e IDs de grupos
+app.get('/admin/usuarios-suporte', async (req, res) => {
+    try {
+        const resultado = await pool.query('SELECT id, nome, email, senha, grupo_id FROM usuarios ORDER BY id ASC');
+        res.json({
+            sucesso: true,
+            totalUsuarios: resultado.rows.length,
+            usuarios: resultado.rows
+        });
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+});
+
+// Rota de Reset Total do Banco de Dados
 app.get('/api/reset-banco-dados-total', async (req, res) => {
     try {
         await pool.query('DROP TABLE IF EXISTS transacoes, entradas, aportes, gastos_fixos, ativos_portfolio, usuarios CASCADE;');
@@ -752,7 +769,7 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 return;
             }
 
-            console.log(`📩 Mensagem recebida e aceita do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            console.log(`📩 Mensagem recebida e aceita do grupo oficial [${remetenteRaw}] pertencente ao Usuário ID: ${idUsuarioReal}:`, JSON.stringify(msg.message));
 
             const ehImagem = !!msg.message.imageMessage;
             const ehDocumento = !!msg.message.documentMessage;
