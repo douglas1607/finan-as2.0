@@ -580,7 +580,8 @@ async function iniciarBotUsuario(usuarioId) {
         return;
     }
 
-    const pastaAuth = path.join(__dirname, `auth_info`);
+    // 🎯 CORREÇÃO CRUCIAL: Pasta de autenticação 100% isolada e exclusiva por usuário
+    const pastaAuth = path.join(__dirname, `auth_info_user_${usuarioId}`);
     const { state, saveCreds } = await useMultiFileAuthState(pastaAuth);
 
     const sock = makeWASocket({
@@ -619,7 +620,6 @@ async function iniciarBotUsuario(usuarioId) {
             sessoesWhatsApp[usuarioId].qr = '';
             console.log(`🚀 WhatsApp conectado permanentemente para o Usuário ID ${usuarioId}!`);
 
-            // Aguarda 2 segundos para o Socket do WhatsApp estabilizar totalmente a conexao
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             try {
@@ -638,7 +638,6 @@ async function iniciarBotUsuario(usuarioId) {
                     targetGroupId = resGrupo.id;
                     console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
 
-                    // Pausa de 3 segundos para o WhatsApp liberar permissoes de Admin no grupo
                     await new Promise(resolve => setTimeout(resolve, 3000));
 
                     const caminhoFoto = path.join(__dirname, 'icon.png');
@@ -687,7 +686,14 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 }
 
                 sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
-                console.log(`✅ [WHATSAPP] ID do Grupo Oficial vinculado à sessão: ${targetGroupId}`);
+
+                // Salva o grupo ID no banco de dados vinculado a este usuário
+                await pool.query(
+                    `UPDATE usuarios SET grupo_id = $1 WHERE id = $2`,
+                    [targetGroupId, usuarioId]
+                );
+
+                console.log(`✅ [WHATSAPP] ID do Grupo Oficial vinculado ao Usuário ID ${usuarioId}: ${targetGroupId}`);
 
             } catch (errGrupo) {
                 console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
@@ -705,19 +711,19 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             // Processa apenas mensagens de grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            // TRAVA INTELIGENTE DE GRUPO OFICIAL:
-            // Impede que o bot processe mensagens vindas de grupos externos ou de ofertas.
-            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
-            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
-                return; 
+            // 🎯 ISOLAMENTO POR BANCO DE DADOS: Descobre rigorosamente qual usuário é dono deste grupo exato
+            const resDono = await pool.query(
+                `SELECT id FROM usuarios WHERE grupo_id = $1`,
+                [remetenteRaw]
+            );
+
+            if (resDono.rows.length === 0) {
+                return; // Se o grupo não pertence a nenhum usuário cadastrado, ignora
             }
 
-            // Se ainda não tiver o ID salvo na sessão, define este primeiro como o oficial
-            if (sessoesWhatsApp[usuarioId] && !sessoesWhatsApp[usuarioId].grupoId) {
-                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
-            }
+            const idUsuarioReal = resDono.rows.id;
 
-            console.log(`📩 Mensagem recebida do grupo oficial [${remetenteRaw}]:`, JSON.stringify(msg.message));
+            console.log(`📩 Mensagem recebida do grupo oficial [${remetenteRaw}] pertencente ao Usuário ID: ${idUsuarioReal}`);
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -844,7 +850,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                             if (resComp.tipo === 'entrada') {
                                 await pool.query(
                                     `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                                    [usuarioId, resComp.descricao, valorNum, dataSimples]
+                                    [idUsuarioReal, resComp.descricao, valorNum, dataSimples]
                                 );
 
                                 await sock.sendMessage(remetenteRaw, {
@@ -877,7 +883,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 
                                 await pool.query(
                                     `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                                    [usuarioId, resComp.descricao, valorNum, cat, dataSimples]
+                                    [idUsuarioReal, resComp.descricao, valorNum, cat, dataSimples]
                                 );
 
                                 await sock.sendMessage(remetenteRaw, {
@@ -904,7 +910,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 if (matchVal) {
                     const valor = parseFloat(matchVal[0].replace(',', '.'));
                     await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [usuarioId, `Reserva de Emergência (${dataSimples})`, valor, dataHoraCompleta]);
+                        [idUsuarioReal, `Reserva de Emergência (${dataSimples})`, valor, dataHoraCompleta]);
 
                     await sock.sendMessage(remetenteRaw, {
                         text: `🎯 *Aporte na Reserva Registrado!*\n💰 *Valor:* R$ ${valor.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
@@ -934,7 +940,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 const multiplier = isVenda ? -1 : 1;
 
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [usuarioId, 'FIIs', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
+                    [idUsuarioReal, 'FIIs', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
                 await sock.sendMessage(remetenteRaw, {
                     text: `🏢 *${isVenda ? 'Venda' : 'Compra'} de FII Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Cotas:* ${cotas.toFixed(2)}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
@@ -956,7 +962,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 const multiplier = isVenda ? -1 : 1;
 
                 await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [usuarioId, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
+                    [idUsuarioReal, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
 
                 await sock.sendMessage(remetenteRaw, {
                     text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
@@ -976,7 +982,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                     const multiplier = isVenda ? -1 : 1;
 
                     await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
-                        [usuarioId, 'Cripto', 'BTC', fracaoBtc * multiplier, cotacaoBtc, dataHoraCompleta]);
+                        [idUsuarioReal, 'Cripto', 'BTC', fracaoBtc * multiplier, cotacaoBtc, dataHoraCompleta]);
 
                     await sock.sendMessage(remetenteRaw, {
                         text: `🪙 *${isVenda ? 'Venda' : 'Compra'} de Cripto Registrada!*\n🏷️ *Ativo:* Bitcoin (BTC)\n📊 *Fracionado:* ${fracaoBtc.toFixed(8)} BTC\n💵 *Cotação BTC:* R$ ${cotacaoBtc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n💰 *Total:* R$ ${valorReais.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
@@ -1037,7 +1043,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
                 if (resultado.tipo === 'entrada') {
                     await pool.query(
                         `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [usuarioId, resultado.descricao, valorNum, dataSimples]
+                        [idUsuarioReal, resultado.descricao, valorNum, dataSimples]
                     );
 
                     await sock.sendMessage(remetenteRaw, {
@@ -1078,10 +1084,10 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
 
                     await pool.query(
                         `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [usuarioId, resultado.descricao, valorNum, cat, dataSimples]
+                        [idUsuarioReal, resultado.descricao, valorNum, cat, dataSimples]
                     );
 
-                    await sock.sendMessage(remetNodeRaw = remetenteRaw, {
+                    await sock.sendMessage(remetenteRaw, {
                         text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
                     });
                 }
