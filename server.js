@@ -110,7 +110,6 @@ async function inicializarTabelas() {
                 data VARCHAR(50)
             );
         `);
-        // Garante que a coluna grupo_id exista mesmo em bancos já criados anteriormente
         await pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS grupo_id VARCHAR(255);`);
         await pool.query(`ALTER TABLE ativos_portfolio ADD COLUMN IF NOT EXISTS data_compra VARCHAR(50);`);
         await pool.query(`ALTER TABLE ativos_portfolio ALTER COLUMN quantidade TYPE NUMERIC(15,8);`);
@@ -123,7 +122,6 @@ inicializarTabelas();
 
 async function chamarComRetry(prompt, imagemBase64 = null) {
     try {
-        // Inicializa o modelo com segurança dentro da função usando a SDK
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         let parts = [{ text: prompt }];
@@ -141,7 +139,6 @@ async function chamarComRetry(prompt, imagemBase64 = null) {
             contents: [{ parts: parts }]
         });
 
-        // Extrai o texto da resposta do formato oficial da SDK da Google
         const respostaTexto = response.response.text();
 
         if (respostaTexto) {
@@ -168,7 +165,7 @@ function autenticarToken(req, res, next) {
 // Rota de Suporte Admin para inspecionar cadastros e IDs de grupos
 app.get('/admin/usuarios-suporte', async (req, res) => {
     try {
-        const resultado = await pool.query('SELECT id, nome, email, senha, grupo_id FROM usuarios ORDER BY id ASC');
+        const resultado = await pool.query('SELECT id, nome, email, grupo_id FROM usuarios ORDER BY id ASC');
         res.json({
             sucesso: true,
             totalUsuarios: resultado.rows.length,
@@ -178,6 +175,18 @@ app.get('/admin/usuarios-suporte', async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 });
+
+function autenticarToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ erro: "Acesso negado. Faça login para continuar." });
+
+    jwt.verify(token, SECRET_JWT, (err, usuario) => {
+        if (err) return res.status(403).json({ erro: "Sessão expirada. Faça login novamente." });
+        req.usuario = usuario;
+        next();
+    });
+}
 
 // Rota de Reset Total do Banco de Dados
 app.get('/api/reset-banco-dados-total', async (req, res) => {
@@ -597,7 +606,6 @@ async function iniciarBotUsuario(usuarioId) {
         return;
     }
 
-    // 🎯 CORREÇÃO CRUCIAL: Pasta de autenticação 100% isolada e exclusiva por usuário
     const pastaAuth = path.join(__dirname, `auth_info_user_${usuarioId}`);
     const { state, saveCreds } = await useMultiFileAuthState(pastaAuth);
 
@@ -704,7 +712,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
                 sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
 
-                // Salva o grupo ID no banco de dados vinculado a este usuário
                 await pool.query(
                     `UPDATE usuarios SET grupo_id = $1 WHERE id = $2`,
                     [targetGroupId, usuarioId]
@@ -725,22 +732,23 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const remetenteRaw = msg.key.remoteJid;
 
-            // Processa apenas mensagens de grupo (@g.us)
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            // 🎯 ISOLAMENTO POR BANCO DE DADOS: Descobre rigorosamente qual usuário é dono deste grupo exato
-            const resDono = await pool.query(
-                `SELECT id FROM usuarios WHERE grupo_id = $1`,
-                [remetenteRaw]
-            );
-
-            if (resDono.rows.length === 0) {
-                return; // Se o grupo não pertence a nenhum usuário cadastrado, ignora
+            // 🎯 CORREÇÃO CRUCIAL: Utiliza diretamente o usuarioId da sessão ativa do Baileys
+            // e garante que o grupo da mensagem bate com o grupo oficial deste usuário.
+            const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
+            
+            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
+                return; // Ignora se a mensagem veio de outro grupo externo
             }
 
-            const idUsuarioReal = resDono.rows.id;
+            // Se por acaso o grupoId em memória estiver vazio, define agora e atualiza no banco
+            if (!sessoesWhatsApp[usuarioId].grupoId) {
+                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
+                await pool.query(`UPDATE usuarios SET grupo_id = $1 WHERE id = $2`, [remetenteRaw, usuarioId]);
+            }
 
-            console.log(`📩 Mensagem recebida do grupo oficial [${remetenteRaw}] pertencente ao Usuário ID: ${idUsuarioReal}`);
+            const idUsuarioReal = usuarioId;
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -752,9 +760,6 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
 
             const textoMin = textoChecagem.toLowerCase();
 
-            // TRAVA ANTI-LOOP INTELIGENTE:
-            // Ignora apenas as mensagens automáticas geradas pelo próprio bot para evitar loop infinito,
-            // permitindo que você digite os comandos livremente no seu número.
             if (msg.key.fromMe && (
                 textoMin.includes('entrada registrada no financia') ||
                 textoMin.includes('gasto registrado no financia') ||
@@ -1022,7 +1027,7 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
             const promptIA = `
             Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
             Mensagem: "${textoLimpo}"
-            Responda EXATAMENTE e APENAS um JSON no formato abaixo (sem marcadores markdown):
+            Responda EXATAMENTE E APENAS um JSON no formato abaixo (sem marcadores markdown):
             {"eGasto": true, "descricao": "Gasto", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
             `;
 
@@ -1114,7 +1119,6 @@ Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, 
         }
     });
 }
-
 
 app.get('/api/whatsapp/qr-code', autenticarToken, async (req, res) => {
     try {
