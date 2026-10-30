@@ -5,19 +5,19 @@ const path = require('path');
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { GoogleGenAI } = require('@google/genai');
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const multer = require('multer');
-const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCodeLib = require('qrcode');
 const fs = require('fs');
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET_JWT = process.env.JWT_SECRET || "financia_autonoma_chave_secreta_2026";
-const PDFParse = require('pdf2json');
-const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+
+// 🌐 URL DO WEBHOOK DO SEU N8N
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "https://maikom.app.n8n.cloud/webhook/financia-processar";
 
 app.use(cors({
     origin: '*',
@@ -34,11 +34,6 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Inicialização segura da IA
-const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
-    apiVersion: 'v1'
-});
 const upload = multer({ storage: multer.memoryStorage() });
 
 const pool = new Pool({
@@ -120,36 +115,6 @@ async function inicializarTabelas() {
 }
 inicializarTabelas();
 
-async function chamarComRetry(prompt, imagemBase64 = null) {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        let parts = [{ text: prompt }];
-
-        if (imagemBase64) {
-            parts.push({
-                inlineData: {
-                    mimeType: "image/jpeg",
-                    data: imagemBase64
-                }
-            });
-        }
-
-        const response = await model.generateContent({
-            contents: [{ parts: parts }]
-        });
-
-        const respostaTexto = response.response.text();
-
-        if (respostaTexto) {
-            return { text: respostaTexto };
-        }
-    } catch (err) {
-        console.error("❌ Erro definitivo na chamada do Gemini:", err.message);
-        throw err;
-    }
-}
-
 function autenticarToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -175,18 +140,6 @@ app.get('/admin/usuarios-suporte', async (req, res) => {
         res.status(500).json({ erro: err.message });
     }
 });
-
-function autenticarToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ erro: "Acesso negado. Faça login para continuar." });
-
-    jwt.verify(token, SECRET_JWT, (err, usuario) => {
-        if (err) return res.status(403).json({ erro: "Sessão expirada. Faça login novamente." });
-        req.usuario = usuario;
-        next();
-    });
-}
 
 // Rota de Reset Total do Banco de Dados
 app.get('/api/reset-banco-dados-total', async (req, res) => {
@@ -337,7 +290,7 @@ app.delete('/api/aportes/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir aporte." }); }
 });
 
-// Rotas de Transações
+// Rotas de Transações e Extrato
 app.get('/api/extrato', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM transacoes WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -356,9 +309,7 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     if (
         descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
         descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
-        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') ||
-        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') ||
-        descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
+        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao')
     ) {
         categoria = 'Transporte';
     } else if (
@@ -368,15 +319,13 @@ app.post('/api/transacao', autenticarToken, async (req, res) => {
     ) {
         categoria = 'Lazer';
     } else if (
-        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') ||
-        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('feira') ||
-        descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
+        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('padaria') ||
+        descNorm.includes('paes') || descNorm.includes('feira') || descNorm.includes('horti') || descNorm.includes('acougue')
     ) {
         categoria = 'Mercado';
     } else if (
         descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') ||
-        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') ||
-        descNorm.includes('condominio') || descNorm.includes('acessorios')
+        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel')
     ) {
         categoria = 'Casa';
     }
@@ -398,6 +347,7 @@ app.delete('/api/transacao/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir transação." }); }
 });
 
+// 📥 Rota de Importação OFX mantida integralmente
 app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), async (req, res) => {
     console.log("📥 [EXTRATO] Processando arquivo enviado...");
     try {
@@ -412,79 +362,38 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         const usuarioId = req.usuario.id;
         const dataHoje = new Date().toLocaleDateString('pt-BR');
 
-        let transacoesExtraidas = [];
+        const linhas = conteudoArquivo.split(/\r?\n/);
+        const mapUnicas = new Map();
 
-        try {
-            const prompt = `
-            Você é um assistente financeiro especialista. Analise o extrato bancário em texto abaixo e extraia TODAS as transações reais de entrada e saída.
+        for (let linha of linhas) {
+            const matchVal = linha.match(/(-?\d+[\.,]\d{2})/);
+            if (matchVal) {
+                const valNum = Math.abs(parseFloat(matchVal[1].replace('.', '').replace(',', '.')));
+                let descLimpa = linha.replace(matchVal[0], '')
+                    .replace(/R\$/g, '')
+                    .replace(/\d{2}\/\d{2}\/\d{4}/g, '')
+                    .replace(/\b\d{6,}\b/g, '')
+                    .trim();
 
-            REGRAS DE CATEGORIZAÇÃO:
-            - "Mercado": Supermercados, padarias, açougues, hortifruti, atacadões.
-            - "Transporte": Uber, 99, postos de gasolina, pedágio, pneu, moto, mecânica.
-            - "Casa": Luz, água, internet, gás, aluguel, condomínio.
-            - "Lazer": iFood, restaurantes, lanchonetes, açaí, jantar, streaming.
-            - "Compras": Compras gerais, farmácia, vestuário, PIX enviados.
-            - "Entrada": Salários, PIX recebidos, rendimentos, vendas.
+                if (valNum > 0 && valNum < 50000 && descLimpa.length >= 2 && !descLimpa.toLowerCase().includes('saldo')) {
+                    let cat = 'Compras';
+                    const dL = descLimpa.toLowerCase();
 
-            FORMATO DE SAÍDA EXIGIDO:
-            Retorne APENAS um array JSON puro (sem markdown, sem \`\`\`json):
-            [
-              {"descricao": "Supermercado Extra", "valor": 150.00, "tipo": "saida", "categoria": "Mercado"},
-              {"descricao": "Uber", "valor": 25.00, "tipo": "saida", "categoria": "Transporte"},
-              {"descricao": "Pix Recebido", "valor": 1200.00, "tipo": "entrada", "categoria": "Entrada"}
-            ]
+                    if (dL.includes('mercado') || dL.includes('super') || dL.includes('padaria')) cat = 'Mercado';
+                    else if (dL.includes('uber') || dL.includes('99') || dL.includes('posto')) cat = 'Transporte';
+                    else if (dL.includes('ifood') || dL.includes('jantar')) cat = 'Lazer';
+                    else if (dL.includes('luz') || dL.includes('agua') || dL.includes('internet')) cat = 'Casa';
 
-            Texto do Extrato:
-            """
-            ${conteudoArquivo}
-            """
-            `;
-
-            const respostaIA = await chamarComRetry(prompt);
-            let textoResposta = respostaIA.text || '';
-            let jsonLimpo = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
-            const inicio = jsonLimpo.indexOf('[');
-            const fim = jsonLimpo.lastIndexOf(']');
-            if (inicio !== -1 && fim !== -1) {
-                jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
-            }
-
-            transacoesExtraidas = JSON.parse(jsonLimpo);
-        } catch (errIA) {
-            console.warn("⚠️ [EXTRATO] IA indisponível. Iniciando varredura RegEx...");
-            const linhas = conteudoArquivo.split(/\r?\n/);
-            const mapUnicas = new Map();
-
-            for (let linha of linhas) {
-                const matchVal = linha.match(/(-?\d+[\.,]\d{2})/);
-                if (matchVal) {
-                    const valNum = Math.abs(parseFloat(matchVal[1].replace('.', '').replace(',', '.')));
-                    let descLimpa = linha.replace(matchVal[0], '')
-                        .replace(/R\$/g, '')
-                        .replace(/\d{2}\/\d{2}\/\d{4}/g, '')
-                        .replace(/\b\d{6,}\b/g, '')
-                        .trim();
-
-                    if (valNum > 0 && valNum < 50000 && descLimpa.length >= 2 && !descLimpa.toLowerCase().includes('saldo')) {
-                        let cat = 'Compras';
-                        const dL = descLimpa.toLowerCase();
-
-                        if (dL.includes('mercado') || dL.includes('super') || dL.includes('padaria')) cat = 'Mercado';
-                        else if (dL.includes('uber') || dL.includes('99') || dL.includes('posto') || dL.includes('pneu') || dL.includes('moto')) cat = 'Transporte';
-                        else if (dL.includes('ifood') || dL.includes('jantar') || dL.includes('lanche')) cat = 'Lazer';
-                        else if (dL.includes('luz') || dL.includes('agua') || dL.includes('internet')) cat = 'Casa';
-
-                        const chave = `${descLimpa}_${valNum}`;
-                        if (!mapUnicas.has(chave)) {
-                            mapUnicas.set(chave, { descricao: descLimpa.slice(0, 50), valor: valNum, tipo: 'saida', categoria: cat });
-                        }
+                    const chave = `${descLimpa}_${valNum}`;
+                    if (!mapUnicas.has(chave)) {
+                        mapUnicas.set(chave, { descricao: descLimpa.slice(0, 50), valor: valNum, tipo: 'saida', categoria: cat });
                     }
                 }
             }
-            transacoesExtraidas = Array.from(mapUnicas.values());
         }
+        const transacoesExtraidas = Array.from(mapUnicas.values());
 
-        if (!Array.isArray(transacoesExtraidas) || transacoesExtraidas.length === 0) {
+        if (transacoesExtraidas.length === 0) {
             return res.status(400).json({ erro: "Nenhuma transação válida identificada." });
         }
 
@@ -492,23 +401,11 @@ app.post('/api/importar-ofx', autenticarToken, upload.single('arquivoOfx'), asyn
         let qtdEntradas = 0;
 
         for (let t of transacoesExtraidas) {
-            const desc = t.descricao ? t.descricao.trim() : 'Movimentação';
-            const val = Math.abs(parseFloat(t.valor) || 0);
-            const tipo = (t.tipo || 'saida').toLowerCase();
-            const cat = ['Mercado', 'Casa', 'Lazer', 'Transporte', 'Compras'].includes(t.categoria) ? t.categoria : 'Compras';
-
-            if (val > 0) {
-                if (tipo === 'entrada' || cat === 'Entrada') {
-                    await pool.query(`INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`, [usuarioId, desc, val, dataHoje]);
-                    qtdEntradas++;
-                } else {
-                    await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`, [usuarioId, desc, val, cat, dataHoje]);
-                    qtdSaidas++;
-                }
-            }
+            await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`, [usuarioId, t.descricao, t.valor, t.categoria, dataHoje]);
+            qtdSaidas++;
         }
 
-        res.json({ mensagem: `✅ Extrato importado com sucesso: ${qtdSaidas} saídas e ${qtdEntradas} entradas!` });
+        res.json({ mensagem: `✅ Extrato importado com sucesso: ${qtdSaidas} saídas cadastradas!` });
     } catch (err) {
         res.status(500).json({ erro: "Erro interno no servidor: " + err.message });
     }
@@ -521,7 +418,7 @@ app.delete('/api/limpar-extrato', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao limpar extrato." }); }
 });
 
-// Rotas de Gastos Fixos
+// Rotas de Gastos Fixos e Ativos
 app.get('/api/gastos-fixos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM gastos_fixos WHERE usuario_id = $1 AND (pago = 0 OR pago IS NULL)`, [req.usuario.id]);
@@ -537,19 +434,6 @@ app.post('/api/gastos-fixos', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao cadastrar conta fixa." }); }
 });
 
-app.put('/api/gastos-fixos/:id/pago', autenticarToken, async (req, res) => {
-    try {
-        const busca = await pool.query(`SELECT * FROM gastos_fixos WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        const conta = busca.rows[0];
-        if (!conta) return res.status(404).json({ erro: "Conta não encontrada." });
-
-        await pool.query(`UPDATE gastos_fixos SET pago = 1 WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
-        const dataHoje = new Date().toLocaleDateString('pt-BR');
-        await pool.query(`INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`, [req.usuario.id, `[PAGO] ${conta.descricao}`, conta.valor, 'Casa', dataHoje]);
-        res.json({ mensagem: "Pagamento registrado!" });
-    } catch (err) { res.status(500).json({ erro: "Erro ao dar baixa." }); }
-});
-
 app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     try {
         await pool.query(`DELETE FROM gastos_fixos WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.usuario.id]);
@@ -557,7 +441,6 @@ app.delete('/api/gastos-fixos/:id', autenticarToken, async (req, res) => {
     } catch (err) { res.status(500).json({ erro: "Erro ao excluir." }); }
 });
 
-// Rotas de Ativos
 app.get('/api/ativos', autenticarToken, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ativos_portfolio WHERE usuario_id = $1 ORDER BY id DESC`, [req.usuario.id]);
@@ -597,7 +480,7 @@ app.delete('/api/ativos/:id', autenticarToken, async (req, res) => {
 });
 
 // ==========================================
-// DECLARAÇÃO GLOBAL DA SESSÃO DO WHATSAPP
+// SESSÕES WHATSAPP & WEBHOOK N8N
 // ==========================================
 const sessoesWhatsApp = {};
 
@@ -656,71 +539,29 @@ async function iniciarBotUsuario(usuarioId) {
 
                 if (grupoExistente) {
                     targetGroupId = grupoExistente.id;
-                    console.log(`📌 [WHATSAPP] Grupo oficial já existe com ID: ${targetGroupId}`);
                 } else {
                     const meuNumeroJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                     const resGrupo = await sock.groupCreate("FinancIA - Gestão Financeira", [meuNumeroJid]);
                     targetGroupId = resGrupo.id;
-                    console.log(`👥 [WHATSAPP] Novo grupo criado com ID: ${targetGroupId}`);
 
                     await new Promise(resolve => setTimeout(resolve, 3000));
-
                     const caminhoFoto = path.join(__dirname, 'icon.png');
                     if (fs.existsSync(caminhoFoto)) {
                         try {
                             const bufferFoto = fs.readFileSync(caminhoFoto);
                             await sock.updateProfilePicture(targetGroupId, bufferFoto);
-                            console.log(`🖼️ [WHATSAPP] Foto 'icon.png' definida para o grupo!`);
-                        } catch (errFoto) {
-                            console.error(`⚠️ Erro ao definir foto do grupo:`, errFoto.message);
-                        }
+                        } catch (errFoto) { }
                     }
 
-                    const mensagemBoasVindas =
-                        `👋 *Bem-vindo ao FinancIA Autônoma!*
-
-Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos. Todas as mensagens enviadas aqui serão organizadas automaticamente no seu painel!
-
-📌 *Como registrar seus dados (Comandos e Gatilhos):*
-
-💸 *Gastos e Compras:*
-• Envie: \`gasto 25 mercado\`
-• Envie: \`paguei 40 gasolina\`
-• Envie: \`comprei 150 farmácia\`
-
-💰 *Entradas e Salários:*
-• Envie: \`entrada 1200 salário\`
-• Envie: \`recebi 150 pix do cliente\`
-
-🎯 *Reserva de Emergência:*
-• Envie: \`reserva 200\` ou \`aporte 500\`
-
-📈 *Investimentos (Carteira):*
-• *FIIs:* \`fii 10 cotas MXRF11\`
-• *Ações:* \`compra 5 acoes PETR4\`
-• *Cripto:* \`cripto 100 bitcoin\`
-
-🚀 *Dica:* Você também pode enviar comprovantes em foto ou áudios que nossa IA irá interpretar para você!`;
-
-                    try {
-                        await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
-                        console.log(`📩 Mensagem de boas-vindas enviada com sucesso!`);
-                    } catch (errMsg) {
-                        console.error(`⚠️ Erro ao enviar mensagem de boas-vindas:`, errMsg.message);
-                    }
+                    const mensagemBoasVindas = `👋 *Bem-vindo ao FinancIA Autônoma!*\n\nEste é o seu grupo exclusivo para registro de gastos, entradas e investimentos. Envie comandos por texto, foto ou PDF!`;
+                    await sock.sendMessage(targetGroupId, { text: mensagemBoasVindas });
                 }
 
                 sessoesWhatsApp[usuarioId].grupoId = targetGroupId;
-
-                await pool.query(
-                    `UPDATE usuarios SET grupo_id = $1 WHERE id = $2`,
-                    [targetGroupId, usuarioId]
-                );
-
-                console.log(`✅ [WHATSAPP] ID do Grupo Oficial vinculado ao Usuário ID ${usuarioId}: ${targetGroupId}`);
+                await pool.query(`UPDATE usuarios SET grupo_id = $1 WHERE id = $2`, [targetGroupId, usuarioId]);
 
             } catch (errGrupo) {
-                console.error(`ℹ️ [WHATSAPP] Erro no gerenciamento de grupo:`, errGrupo.message);
+                console.error(`ℹ️ Erro no gerenciamento de grupo:`, errGrupo.message);
             }
         }
     });
@@ -731,24 +572,10 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
             if (!msg || !msg.message) return;
 
             const remetenteRaw = msg.key.remoteJid;
-
             if (!remetenteRaw.endsWith('@g.us')) return;
 
-            // 🎯 CORREÇÃO CRUCIAL: Utiliza diretamente o usuarioId da sessão ativa do Baileys
-            // e garante que o grupo da mensagem bate com o grupo oficial deste usuário.
             const grupoOficialSalvo = sessoesWhatsApp[usuarioId]?.grupoId;
-            
-            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) {
-                return; // Ignora se a mensagem veio de outro grupo externo
-            }
-
-            // Se por acaso o grupoId em memória estiver vazio, define agora e atualiza no banco
-            if (!sessoesWhatsApp[usuarioId].grupoId) {
-                sessoesWhatsApp[usuarioId].grupoId = remetenteRaw;
-                await pool.query(`UPDATE usuarios SET grupo_id = $1 WHERE id = $2`, [remetenteRaw, usuarioId]);
-            }
-
-            const idUsuarioReal = usuarioId;
+            if (grupoOficialSalvo && remetenteRaw !== grupoOficialSalvo) return;
 
             const textoChecagem = (
                 msg.message.conversation ||
@@ -758,364 +585,38 @@ Este é o seu grupo exclusivo para registro de gastos, entradas e investimentos.
                 ''
             ).trim();
 
-            const textoMin = textoChecagem.toLowerCase();
+            if (msg.key.fromMe && textoChecagem.includes('Registrado')) return;
 
-            if (msg.key.fromMe && (
-                textoMin.includes('entrada registrada no financia') ||
-                textoMin.includes('gasto registrado no financia') ||
-                textoMin.includes('comprovante registrado') ||
-                textoMin.includes('comprovante de entrada registrado') ||
-                textoMin.includes('aporte na reserva registrado') ||
-                textoMin.includes('de fii registrada') ||
-                textoMin.includes('de ação registrada') ||
-                textoMin.includes('de cripto registrada') ||
-                textoMin.includes('bem-vindo ao financia')
-            )) {
-                return;
-            }
-
-            console.log(`📩 Mensagem recebida e aceita do grupo oficial [${remetenteRaw}] pertencente ao Usuário ID: ${idUsuarioReal}:`, JSON.stringify(msg.message));
-
-            const ehImagem = !!msg.message.imageMessage;
-            const ehDocumento = !!msg.message.documentMessage;
-            const mimeTypeDoc = msg.message.documentMessage?.mimetype || '';
-            const ehPDF = ehDocumento && mimeTypeDoc.includes('pdf');
-
-            let textoMensagem = textoChecagem;
             let imagemBase64 = null;
-            let textoExtraidoPDF = '';
-
-            if (ehPDF) {
+            if (msg.message.imageMessage) {
                 try {
-                    const bufferPDF = await downloadMediaMessage(msg, 'buffer', {});
-                    textoExtraidoPDF = await new Promise((resolve) => {
-                        const pdfParser = new PDFParser(null, 1);
-                        pdfParser.on("pdfParser_dataError", () => resolve(""));
-                        pdfParser.on("pdfParser_dataReady", () => {
-                            resolve(pdfParser.getRawTextContent());
-                        });
-                        pdfParser.parseBuffer(bufferPDF);
-                    });
-                    console.log("📄 [COMPROVANTE PDF] Texto extraído com sucesso!");
-                } catch (errPdf) {
-                    console.error("Erro ao ler comprovante PDF:", errPdf.message);
-                }
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                    imagemBase64 = buffer.toString('base64');
+                } catch (e) { }
             }
 
-            if (ehImagem) {
-                try {
-                    const bufferImagem = await downloadMediaMessage(msg, 'buffer', {});
-                    imagemBase64 = bufferImagem.toString('base64');
-                    console.log("🖼️ [COMPROVANTE IMAGEM] Baixado para análise da IA!");
-                } catch (errImg) {
-                    console.error("Erro ao baixar imagem de comprovante:", errImg.message);
-                }
-            }
+            const payloadN8N = {
+                usuarioId: usuarioId,
+                texto: textoChecagem,
+                imagemBase64: imagemBase64,
+                remetenteJid: remetenteRaw
+            };
 
-            if (ehImagem || ehPDF) {
-                const promptComprovante = `
-Você é o motor de inteligência financeira do FinancIA. 
-Sua tarefa é analisar este comprovante (Pix, transferência ou cartão) e extrair os dados com MÁXIMA PRECISÃO.
-
-[DADOS DE ENTRADA]
-${textoExtraidoPDF ? `Texto do PDF:\n"${textoExtraidoPDF}"` : ''}
-Legenda/Texto enviado pelo usuário: "${textoMensagem}"
-
-[HIERARQUIA DE REGRAS DE CATEGORIZAÇÃO E DESCRIÇÃO]
-
-1. REGRA SUPREMA - COM LEGENDA DO USUÁRIO:
-   - Se o usuário digitou algum texto na legenda (ex: "jantar", "mercado", "gasolina"):
-     * A CATEGORIA DEVE ser definida estritamente com base na legenda (ex: "jantar" -> "Lazer" ou "Alimentação"; "mercado" -> "Mercado").
-     * A DESCRIÇÃO pode combinar o nome do recebedor/estabelecimento com a intenção do usuário (ex: "Pix enviado para Fulano de Tal (jantar)" ou apenas "Jantar").
-
-2. REGRA SECUNDÁRIA - SEM LEGENDA DO USUÁRIO (ANÁLISE DE CNPJ / ESTABELECIMENTO):
-   - Se o usuário NÃO enviou nenhuma legenda (ou apenas enviou o arquivo):
-     * Analise o nome da empresa, razão social ou nome do recebedor presente no comprovante.
-     * DEDUSA a categoria automaticamente:
-       - Nomes contendo "Supermercado", "Mercado", "Atacadista", "Moranguinho" -> Categoria: "Mercado".
-       - Nomes contendo "Açaí", "Restaurante", "Pizzaria", "Hamburgueria", "Bar" -> Categoria: "Lazer" ou "Alimentação".
-       - Nomes contendo "Posto", "Combustíveis", "Auto Posto" -> Categoria: "Transporte".
-       - Nomes contendo "Farmácia", "Drogaria" -> Categoria: "Saúde".
-       - Pix para Pessoa Física sem legenda -> Categoria: "Outros" ou "Transferências".
-     * A DESCRIÇÃO DEVE ser o nome exato do recebedor/estabelecimento (ex: "Supermercado Moranguinho").
-
-3. EXTRAÇÃO DE VALOR E TIPO:
-   - VALOR: Extraia o valor numérico exato em formato decimal (ex: 650.00 ou 60.00).
-   - TIPO: "saida" para pagamentos/Pix enviados ou "entrada" para Pix/transferências recebidas.
-
-[FORMATO DA RESPOSTA]
-Responda EXATAMENTE E APENAS um objeto JSON válido (sem formatação markdown, sem \`\`\`json):
-{
-  "eGasto": true,
-  "descricao": "Nome do Estabelecimento ou Descrição baseada no Usuário",
-  "valor": 0.00,
-  "tipo": "saida",
-  "categoria": "Nome da Categoria"
-}`;
-
-                try {
-                    let respostaIA = ehImagem && imagemBase64 ?
-                        await chamarComRetry(promptComprovante, imagemBase64) :
-                        await chamarComRetry(promptComprovante);
-
-                    if (respostaIA && respostaIA.text) {
-                        let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-                        const inicio = jsonLimpo.indexOf('{');
-                        const fim = jsonLimpo.lastIndexOf('}');
-                        if (inicio !== -1 && fim !== -1) jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
-                        const resComp = JSON.parse(jsonLimpo);
-
-                        if (resComp.eGasto) {
-                            const dataSimples = new Date().toLocaleDateString('pt-BR');
-                            const valorNum = parseFloat(resComp.valor);
-
-                            if (resComp.tipo === 'entrada') {
-                                await pool.query(
-                                    `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                                    [idUsuarioReal, resComp.descricao, valorNum, dataSimples]
-                                );
-
-                                await sock.sendMessage(remetenteRaw, {
-                                    text: `✅ *Comprovante de Entrada Registrado!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resComp.descricao}`
-                                });
-                            } else {
-                                const descNorm = resComp.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                                let cat = 'Compras';
-
-                                if (
-                                    descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
-                                    descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
-                                    descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao')
-                                ) {
-                                    cat = 'Transporte';
-                                } else if (
-                                    descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') ||
-                                    descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('jantar') || descNorm.includes('bar')
-                                ) {
-                                    cat = 'Lazer';
-                                } else if (
-                                    descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('padaria') || descNorm.includes('feira')
-                                ) {
-                                    cat = 'Mercado';
-                                } else if (
-                                    descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') || descNorm.includes('aluguel')
-                                ) {
-                                    cat = 'Casa';
-                                }
-
-                                await pool.query(
-                                    `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                                    [idUsuarioReal, resComp.descricao, valorNum, cat, dataSimples]
-                                );
-
-                                await sock.sendMessage(remetenteRaw, {
-                                    text: `📌 *Comprovante Registrado!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resComp.descricao}`
-                                });
-                            }
-                            return;
-                        }
-                    }
-                } catch (errCompIA) {
-                    console.error("Erro na análise do comprovante via IA:", errCompIA.message);
-                }
-            }
-
-            if (!textoMensagem) return;
-
-            const textoMinusculo = textoMensagem.toLowerCase();
-            const dataSimples = new Date().toLocaleDateString('pt-BR');
-            const dataHoraCompleta = `${dataSimples} às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-
-            // 1. RESERVA DE EMERGÊNCIA
-            if (textoMinusculo.includes('reserva') || textoMinusculo.includes('aporte')) {
-                const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
-                if (matchVal) {
-                    const valor = parseFloat(matchVal[0].replace(',', '.'));
-                    await pool.query(`INSERT INTO aportes (usuario_id, mes, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [idUsuarioReal, `Reserva de Emergência (${dataSimples})`, valor, dataHoraCompleta]);
-
-                    await sock.sendMessage(remetenteRaw, {
-                        text: `🎯 *Aporte na Reserva Registrado!*\n💰 *Valor:* R$ ${valor.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
-                    });
-                    return;
-                }
-            }
-
-            // 2. FIIs
-            if (textoMinusculo.includes('fii') || textoMinusculo.includes('fundo')) {
-                const isVenda = textoMinusculo.includes('vendi');
-                const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
-                const matchVal = textoMensagem.match(/\d+([.,]\d+)?\s*reais/i) || textoMensagem.match(/r\$\s*\d+([.,]\d+)?/i);
-                const matchTicker = textoMensagem.match(/\b([a-zA-Z]{4}\d{1,2})\b/);
-
-                const ticker = matchTicker ? matchTicker[1].toUpperCase() : 'MXRF11';
-                const cotacao = await obterCotacaoAtual(ticker, 'FIIs');
-
-                let cotas = matchCotas ? parseFloat(matchCotas[1]) : 1;
-                let valorTotal = cotas * cotacao;
-
-                if (matchVal) {
-                    valorTotal = parseFloat(matchVal[0].replace(/[^0-9.,]/g, '').replace(',', '.'));
-                    cotas = valorTotal / cotacao;
-                }
-
-                const multiplier = isVenda ? -1 : 1;
-
-                await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [idUsuarioReal, 'FIIs', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
-
-                await sock.sendMessage(remetenteRaw, {
-                    text: `🏢 *${isVenda ? 'Venda' : 'Compra'} de FII Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Cotas:* ${cotas.toFixed(2)}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
-                });
-                return;
-            }
-
-            // 3. AÇÕES
-            if (textoMinusculo.includes('acao') || textoMinusculo.includes('ações') || textoMinusculo.includes('acoes')) {
-                const isVenda = textoMinusculo.includes('vendi');
-                const matchCotas = textoMensagem.match(/(\d+)\s*cotas?/i);
-                const matchTicker = textoMensagem.match(/\b([a-zA-Z]{4}\d{1,2})\b/);
-
-                const ticker = matchTicker ? matchTicker[1].toUpperCase() : 'PETR4';
-                const cotacao = await obterCotacaoAtual(ticker, 'Ações');
-                let cotas = matchCotas ? parseFloat(matchCotas[1]) : 1;
-                let valorTotal = cotas * cotacao;
-
-                const multiplier = isVenda ? -1 : 1;
-
-                await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [idUsuarioReal, 'Ações', ticker, cotas * multiplier, cotacao, dataHoraCompleta]);
-
-                await sock.sendMessage(remetenteRaw, {
-                    text: `📈 *${isVenda ? 'Venda' : 'Compra'} de Ação Registrada!*\n🏷️ *Ticker:* ${ticker}\n📊 *Qtd:* ${cotas}\n💵 *Cotação:* R$ ${cotacao.toFixed(2)}\n💰 *Total:* R$ ${valorTotal.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
-                });
-                return;
-            }
-
-            // 4. CRIPTO
-            if (textoMinusculo.includes('cripto') || textoMinusculo.includes('btc') || textoMinusculo.includes('bitcoin')) {
-                const isVenda = textoMinusculo.includes('vendi');
-                const matchVal = textoMensagem.match(/\d+([.,]\d+)?/);
-                if (matchVal) {
-                    const valorReais = parseFloat(matchVal[0].replace(',', '.'));
-                    const cotacaoBtc = await obterCotacaoAtual('BTC', 'Cripto');
-                    const fracaoBtc = valorReais / cotacaoBtc;
-
-                    const multiplier = isVenda ? -1 : 1;
-
-                    await pool.query(`INSERT INTO ativos_portfolio (usuario_id, tipo, ticker, quantidade, preco_medio, data_compra) VALUES ($1, $2, $3, $4, $5, $6)`,
-                        [idUsuarioReal, 'Cripto', 'BTC', fracaoBtc * multiplier, cotacaoBtc, dataHoraCompleta]);
-
-                    await sock.sendMessage(remetenteRaw, {
-                        text: `🪙 *${isVenda ? 'Venda' : 'Compra'} de Cripto Registrada!*\n🏷️ *Ativo:* Bitcoin (BTC)\n📊 *Fracionado:* ${fracaoBtc.toFixed(8)} BTC\n💵 *Cotação BTC:* R$ ${cotacaoBtc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n💰 *Total:* R$ ${valorReais.toFixed(2)}\n📅 *Data/Hora:* ${dataHoraCompleta}`
-                    });
-                    return;
-                }
-            }
-
-            // 5. PROCESSAMENTO DE GASTOS E ENTRADAS POR TEXTO
-            const gatilhos = ['!', '/', 'gasto', 'paguei', 'comprei', 'entrada', 'recebi', 'ganhei', 'vendi'];
-            const temGatilho = gatilhos.some(g => textoMinusculo.startsWith(g) || textoMinusculo.includes(g));
-            if (!temGatilho) return;
-
-            const eGatilhoEntrada = ['entrada', 'recebi', 'ganhei', 'vendi'].some(g => textoMinusculo.includes(g));
-            let textoLimpo = textoMensagem;
-            gatilhos.forEach(g => {
-                textoLimpo = textoLimpo.replace(new RegExp(g, 'gi'), '').trim();
+            const respostaN8N = await fetch(N8N_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payloadN8N)
             });
 
-            const promptIA = `
-            Analise a mensagem financeira abaixo e extraia a descrição, valor e tipo.
-            Mensagem: "${textoLimpo}"
-            Responda EXATAMENTE E APENAS um JSON no formato abaixo (sem marcadores markdown):
-            {"eGasto": true, "descricao": "Gasto", "valor": 25.00, "tipo": "${eGatilhoEntrada ? 'entrada' : 'saida'}"}
-            `;
-
-            let resultado = { eGasto: false };
-            try {
-                const respostaIA = await chamarComRetry(promptIA);
-                if (respostaIA && respostaIA.text) {
-                    let jsonLimpo = respostaIA.text.trim().replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const inicio = jsonLimpo.indexOf('{');
-                    const fim = jsonLimpo.lastIndexOf('}');
-                    if (inicio !== -1 && fim !== -1) jsonLimpo = jsonLimpo.substring(inicio, fim + 1);
-                    resultado = JSON.parse(jsonLimpo);
-                }
-            } catch (errIA) {
-                const numerosEncontrados = textoLimpo.match(/\d+([.,]\d+)?/);
-                if (numerosEncontrados) {
-                    const valExt = parseFloat(numerosEncontrados[0].replace(',', '.'));
-                    let descExt = textoLimpo.replace(numerosEncontrados[0], '').replace(/reais|de|por|em/gi, '').trim();
-                    resultado = {
-                        eGasto: true,
-                        descricao: descExt || (eGatilhoEntrada ? 'Entrada WhatsApp' : 'Gasto WhatsApp'),
-                        valor: valExt,
-                        tipo: eGatilhoEntrada ? 'entrada' : 'saida'
-                    };
+            if (respostaN8N.ok) {
+                const dadosProcessados = await respostaN8N.json();
+                if (dadosProcessados?.mensagemResposta) {
+                    await sock.sendMessage(remetenteRaw, { text: dadosProcessados.mensagemResposta });
                 }
             }
 
-            if (eGatilhoEntrada) {
-                resultado.tipo = 'entrada';
-            }
-
-            if (resultado.eGasto) {
-                const valorNum = parseFloat(resultado.valor);
-
-                if (resultado.tipo === 'entrada') {
-                    await pool.query(
-                        `INSERT INTO entradas (usuario_id, descricao, valor, data) VALUES ($1, $2, $3, $4)`,
-                        [idUsuarioReal, resultado.descricao, valorNum, dataSimples]
-                    );
-
-                    await sock.sendMessage(remetenteRaw, {
-                        text: `✅ *Entrada registrada no FinancIA!*\n💰 *Valor:* R$ ${valorNum.toFixed(2)}\n📝 *Descrição:* ${resultado.descricao}`
-                    });
-                } else {
-                    const descNorm = resultado.descricao.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                    let cat = 'Compras';
-
-                    if (
-                        descNorm.includes('uber') || descNorm.includes('99') || descNorm.includes('posto') ||
-                        descNorm.includes('gasolina') || descNorm.includes('combustivel') || descNorm.includes('moto') ||
-                        descNorm.includes('mecanica') || descNorm.includes('oficina') || descNorm.includes('manutencao') ||
-                        descNorm.includes('capacete') || descNorm.includes('pneu') || descNorm.includes('troca de oleo') ||
-                        descNorm.includes('oleo') || descNorm.includes('pedagio') || descNorm.includes('estacionamento')
-                    ) {
-                        cat = 'Transporte';
-                    } else if (
-                        descNorm.includes('ifood') || descNorm.includes('restaurante') || descNorm.includes('lanche') ||
-                        descNorm.includes('acai') || descNorm.includes('pizza') || descNorm.includes('cinema') ||
-                        descNorm.includes('streaming') || descNorm.includes('jantar') || descNorm.includes('bar') ||
-                        descNorm.includes('almoco') || descNorm.includes('almoço')
-                    ) {
-                        cat = 'Lazer';
-                    } else if (
-                        descNorm.includes('mercado') || descNorm.includes('supermercado') || descNorm.includes('agua pra beber') ||
-                        descNorm.includes('padaria') || descNorm.includes('paes') || descNorm.includes('pao') || descNorm.includes('pão') ||
-                        descNorm.includes('feira') || descNorm.includes('horti') || descNorm.includes('acougue') || descNorm.includes('atacadao')
-                    ) {
-                        cat = 'Mercado';
-                    } else if (
-                        descNorm.includes('luz') || descNorm.includes('agua') || descNorm.includes('internet') ||
-                        descNorm.includes('enel') || descNorm.includes('cagece') || descNorm.includes('aluguel') ||
-                        descNorm.includes('condominio') || descNorm.includes('acessorios')
-                    ) {
-                        cat = 'Casa';
-                    }
-
-                    await pool.query(
-                        `INSERT INTO transacoes (usuario_id, descricao, valor, categoria, data) VALUES ($1, $2, $3, $4, $5)`,
-                        [idUsuarioReal, resultado.descricao, valorNum, cat, dataSimples]
-                    );
-
-                    await sock.sendMessage(remetenteRaw, {
-                        text: `📌 *Gasto registrado no FinancIA!*\n💸 *Valor:* R$ ${valorNum.toFixed(2)}\n🏷️ *Categoria:* ${cat}\n📝 *Descrição:* ${resultado.descricao}`
-                    });
-                }
-            }
         } catch (err) {
-            console.error("Erro no processamento do WhatsApp:", err.message);
+            console.error("Erro ao enviar dados para o n8n:", err.message);
         }
     });
 }
