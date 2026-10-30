@@ -615,13 +615,24 @@ async function iniciarBotUsuario(usuarioId) {
                 console.log(`📥 Resposta do n8n (Status ${respostaN8N.status}):`, respostaTexto);
 
                 if (respostaN8N.ok && respostaTexto) {
+                    let textoParaEnviar = respostaTexto.trim();
+
+                    // Tenta ver se o n8n mandou um JSON estruturado ou texto puro
                     try {
-                        const dadosProcessados = JSON.parse(respostaTexto);
-                        if (dadosProcessados?.mensagemResposta) {
-                            await sock.sendMessage(remetenteRaw, { text: dadosProcessados.mensagemResposta });
+                        const dadosJson = JSON.parse(respostaTexto);
+                        if (dadosJson.mensagemResposta) {
+                            textoParaEnviar = dadosJson.mensagemResposta;
+                        } else if (dadosJson.output) {
+                            textoParaEnviar = dadosJson.output;
                         }
-                    } catch (parseErr) {
-                        // Resposta recebida como texto simples com sucesso
+                    } catch (e) {
+                        // Se não for JSON, mantém o texto puro retornado pelo n8n
+                    }
+
+                    // Envia a resposta de volta para o grupo/chat do WhatsApp
+                    if (textoParaEnviar) {
+                        await sock.sendMessage(remetenteRaw, { text: textoParaEnviar });
+                        console.log(`✅ Resposta enviada com sucesso para o WhatsApp!`);
                     }
                 }
             } catch (err) {
