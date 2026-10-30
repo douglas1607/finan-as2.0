@@ -615,24 +615,21 @@ async function iniciarBotUsuario(usuarioId) {
                 console.log(`📥 Resposta do n8n (Status ${respostaN8N.status}):`, respostaTexto);
 
                 if (respostaN8N.ok && respostaTexto) {
-                    const dadosProcessados = JSON.parse(respostaTexto);
-                    if (dadosProcessados?.mensagemResposta) {
-                        await sock.sendMessage(remetenteRaw, { text: dadosProcessados.mensagemResposta });
+                    try {
+                        const dadosProcessados = JSON.parse(respostaTexto);
+                        if (dadosProcessados?.mensagemResposta) {
+                            await sock.sendMessage(remetenteRaw, { text: dadosProcessados.mensagemResposta });
+                        }
+                    } catch (parseErr) {
+                        // Resposta recebida como texto simples com sucesso
                     }
                 }
             } catch (err) {
                 console.error("❌ Erro crítico ao enviar dados para o n8n:", err.message);
             }
 
-            if (respostaN8N.ok) {
-                const dadosProcessados = await respostaN8N.json();
-                if (dadosProcessados?.mensagemResposta) {
-                    await sock.sendMessage(remetenteRaw, { text: dadosProcessados.mensagemResposta });
-                }
-            }
-
         } catch (err) {
-            console.error("Erro ao enviar dados para o n8n:", err.message);
+            console.error("Erro geral no messages.upsert:", err.message);
         }
     });
 }
