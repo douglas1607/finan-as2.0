@@ -595,18 +595,34 @@ async function iniciarBotUsuario(usuarioId) {
                 } catch (e) { }
             }
 
-            const payloadN8N = {
-                usuarioId: usuarioId,
-                texto: textoChecagem,
-                imagemBase64: imagemBase64,
-                remetenteJid: remetenteRaw
-            };
+            try {
+                const payloadN8N = {
+                    usuarioId: usuarioId,
+                    texto: textoChecagem,
+                    imagemBase64: imagemBase64,
+                    remetenteJid: remetenteRaw
+                };
 
-            const respostaN8N = await fetch(N8N_WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payloadN8N)
-            });
+                console.log(`📤 A enviar mensagem do WhatsApp para o n8n (${N8N_WEBHOOK_URL})...`);
+
+                const respostaN8N = await fetch(N8N_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadN8N)
+                });
+
+                const respostaTexto = await respostaN8N.text();
+                console.log(`📥 Resposta do n8n (Status ${respostaN8N.status}):`, respostaTexto);
+
+                if (respostaN8N.ok && respostaTexto) {
+                    const dadosProcessados = JSON.parse(respostaTexto);
+                    if (dadosProcessados?.mensagemResposta) {
+                        await sock.sendMessage(remetenteRaw, { text: dadosProcessados.mensagemResposta });
+                    }
+                }
+            } catch (err) {
+                console.error("❌ Erro crítico ao enviar dados para o n8n:", err.message);
+            }
 
             if (respostaN8N.ok) {
                 const dadosProcessados = await respostaN8N.json();
